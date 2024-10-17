@@ -1,0 +1,30 @@
+<?php 
+
+$s = 'sql311.infinityfree.com';
+$u = 'if0_35668999';
+$p = 'JQFiXb0qJGU18';
+$d = 'if0_35668999_quote';
+
+$conn = mysqli_connect($s, $u, $p, $d);
+
+if (mysqli_connect_errno()) {
+    echo "nggak konek" .mysqli_connect_error();
+}
+
+?>
+
+
+<?php 
+
+$s = 'localhost';
+$u = 'root';
+$p = '';
+$d = 'crud_db';
+
+$conn = mysqli_connect($s, $u, $p, $d);
+
+if (mysqli_connect_errno()) {
+    echo "nggak konek" .mysqli_connect_error();
+}
+
+?>
