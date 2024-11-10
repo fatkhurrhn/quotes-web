@@ -3,7 +3,7 @@
 $s = 'localhost';
 $u = 'root';
 $p = '';
-$d = 'crud_db';
+$d = 'db_quote';
 
 $conn = mysqli_connect($s, $u, $p, $d);
 
