@@ -11,7 +11,9 @@ import {
   deleteDoc,
   where,
   addDoc,
-  serverTimestamp
+  serverTimestamp,
+  collection,
+  getDocs as getDocsFirestore
 } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 
@@ -35,12 +37,16 @@ const ManageQuotes = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [importErrors, setImportErrors] = useState([]);
 
+  // Export state
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Delete all state
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
   // History state
   const [history, setHistory] = useState([]);
   const [selectedAuthor, setSelectedAuthor] = useState('');
-
-  // Notification sending state
-  const [isSendingNotification, setIsSendingNotification] = useState(false);
 
   // Load history from localStorage
   useEffect(() => {
@@ -137,6 +143,29 @@ const ManageQuotes = () => {
         console.error("Error deleting quote: ", error);
         showNotificationMessage('Gagal menghapus quote', 'error');
       }
+    }
+  };
+
+  // Delete all quotes
+  const handleDeleteAll = async () => {
+    setIsDeletingAll(true);
+    try {
+      // Get all quotes
+      const querySnapshot = await getDocs(myQuotesCollection);
+      const deletePromises = querySnapshot.docs.map(doc =>
+        deleteDoc(doc.ref)
+      );
+
+      await Promise.all(deletePromises);
+
+      setQuotes([]);
+      setShowDeleteConfirm(false);
+      showNotificationMessage(`Berhasil menghapus semua quotes!`, 'success');
+    } catch (error) {
+      console.error("Error deleting all quotes: ", error);
+      showNotificationMessage('Gagal menghapus semua quotes', 'error');
+    } finally {
+      setIsDeletingAll(false);
     }
   };
 
@@ -244,6 +273,67 @@ const ManageQuotes = () => {
     XLSX.writeFile(wb, "sample_quotes.xlsx");
   };
 
+  // Export quotes to Excel
+  const handleExportQuotes = () => {
+    if (filteredQuotes.length === 0) {
+      showNotificationMessage('Tidak ada quotes untuk diexport!', 'error');
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      // Prepare data for export
+      const exportData = filteredQuotes.map((quote, index) => ({
+        'No': index + 1,
+        'Quote': quote.text || '',
+        'Author': quote.author || 'Anonymous',
+        'Status': quote.status || 'pending',
+        'Likes': quote.likes || 0,
+        'Views': quote.views || 0,
+        'Created At': quote.createdAt?.toDate ?
+          quote.createdAt.toDate().toLocaleString() :
+          (quote.createdAt ? new Date(quote.createdAt).toLocaleString() : ''),
+        'Updated At': quote.updatedAt?.toDate ?
+          quote.updatedAt.toDate().toLocaleString() :
+          (quote.updatedAt ? new Date(quote.updatedAt).toLocaleString() : '')
+      }));
+
+      // Create worksheet
+      const ws = XLSX.utils.json_to_sheet(exportData);
+
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 5 },   // No
+        { wch: 50 },  // Quote
+        { wch: 20 },  // Author
+        { wch: 12 },  // Status
+        { wch: 8 },   // Likes
+        { wch: 8 },   // Views
+        { wch: 22 },  // Created At
+        { wch: 22 }   // Updated At
+      ];
+
+      // Create workbook
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Quotes");
+
+      // Generate filename with date
+      const date = new Date();
+      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const filename = `quotes_export_${dateStr}.xlsx`;
+
+      // Download file
+      XLSX.writeFile(wb, filename);
+
+      showNotificationMessage(`Berhasil export ${filteredQuotes.length} quotes!`, 'success');
+    } catch (error) {
+      console.error("Error exporting quotes: ", error);
+      showNotificationMessage('Gagal mengexport quotes', 'error');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const handleImportSubmit = async () => {
     if (importPreview.length === 0) {
       showNotificationMessage('Tidak ada quote valid untuk diimport', 'error');
@@ -331,16 +421,6 @@ const ManageQuotes = () => {
     return styles[status] || styles.pending;
   };
 
-  const getStatusIcon = (status) => {
-    const icons = {
-      approved: '✅',
-      pending: '⏳',
-      rejected: '❌',
-      marked: '📌'
-    };
-    return icons[status] || '⏳';
-  };
-
   return (
     <div className="min-h-screen bg-[#f9fafb] pb-16">
       {/* Header */}
@@ -352,6 +432,28 @@ const ManageQuotes = () => {
               <p className="text-[#cbdde9] text-xs">Kelola semua quotes di aplikasi</p>
             </div>
             <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={quotes.length === 0 || isDeletingAll}
+                className="flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition disabled:opacity-50 flex"
+              >
+                {isDeletingAll ? (
+                  <><i className="ri-loader-4-line animate-spin"></i> Menghapus...</>
+                ) : (
+                  <><i className="ri-delete-bin-2-line"></i> Hapus Semua</>
+                )}
+              </button>
+              <button
+                onClick={handleExportQuotes}
+                disabled={isExporting || filteredQuotes.length === 0}
+                className="flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition disabled:opacity-50 flex"
+              >
+                {isExporting ? (
+                  <><i className="ri-loader-4-line animate-spin"></i> Exporting...</>
+                ) : (
+                  <><i className="ri-download-2-line"></i> Export</>
+                )}
+              </button>
               <button
                 onClick={() => setIsImportPopupOpen(true)}
                 className="flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-white bg-white/10 backdrop-blur-sm hover:bg-white/20 border border-white/20 transition flex"
@@ -377,6 +479,46 @@ const ManageQuotes = () => {
           }`}>
           <i className={`${notification.type === 'error' ? 'ri-error-warning-line' : 'ri-checkbox-circle-line'} text-xl`}></i>
           <span className="text-sm">{notification.message}</span>
+        </div>
+      )}
+
+      {/* Delete All Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center justify-center mb-4">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+                  <i className="ri-delete-bin-2-line text-3xl text-red-600"></i>
+                </div>
+              </div>
+              <h2 className="text-xl font-bold text-center text-gray-800 mb-2">Hapus Semua Quotes?</h2>
+              <p className="text-sm text-gray-600 text-center mb-6">
+                Anda yakin ingin menghapus semua <strong>{quotes.length}</strong> quotes?
+                <br />
+                <span className="text-red-500">Tindakan ini tidak dapat dibatalkan!</span>
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 px-4 py-2.5 border rounded-xl text-gray-700 hover:bg-gray-50 text-sm font-medium transition"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleDeleteAll}
+                  disabled={isDeletingAll}
+                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 text-sm font-medium transition disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isDeletingAll ? (
+                    <><i className="ri-loader-4-line animate-spin"></i> Menghapus...</>
+                  ) : (
+                    'Ya, Hapus Semua'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -407,6 +549,22 @@ const ManageQuotes = () => {
           </select>
         </div>
 
+        {/* Info Bar */}
+        <div className="flex justify-between items-center mb-4 px-1">
+          <p className="text-sm text-gray-600">
+            Menampilkan <strong>{filteredQuotes.length}</strong> dari <strong>{quotes.length}</strong> quotes
+          </p>
+          {quotes.length > 0 && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 transition"
+            >
+              <i className="ri-delete-bin-line"></i>
+              Hapus Semua
+            </button>
+          )}
+        </div>
+
         {/* Quotes Grid - Desktop Grid, Mobile Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredQuotes.length > 0 ? (
@@ -416,26 +574,23 @@ const ManageQuotes = () => {
                   {/* Header: Status Badge */}
                   <div className="flex justify-between items-start gap-2 mb-2">
                     <p className="text-sm text-gray-800 leading-relaxed flex-1 line-clamp-3">
-                      "{quote.text}" <br /> <span className="font-semibold"> @ {quote.author || 'Anonymous'}</span>
+                      "{quote.text}"
                     </p>
                   </div>
 
                   {/* Author */}
-                  {/* <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center gap-2 mt-1">
                     <div className="w-6 h-6 bg-gradient-to-r from-blue-700 to-blue-500 rounded-full flex items-center justify-center flex-shrink-0">
                       <i className="ri-user-fill text-white text-xs"></i>
                     </div>
                     <span className="text-xs font-medium text-gray-700 truncate">
                       @{quote.author || 'Anonymous'}
                     </span>
-                  </div> */}
+                  </div>
 
                   {/* Status & Actions */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 mt-2 pt-2 border-t border-gray-100">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mt-3 pt-3 border-t border-gray-100">
                     <div className="flex items-center gap-1.5">
-                      {/* <span className="text-xs font-medium text-gray-700 truncate">
-                        
-                      </span> */}
                       <select
                         className={`text-xs px-2 py-1 rounded-lg border cursor-pointer ${getStatusStyle(quote.status)} border-transparent focus:outline-none focus:ring-1 focus:ring-blue-500`}
                         value={quote.status || 'pending'}
@@ -682,7 +837,7 @@ const ManageQuotes = () => {
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 transition border border-blue-200 mb-4"
               >
                 <i className="ri-download-line"></i>
-                Download Sample Excel
+                Download Sample Excel (format: quote & author)
               </button>
 
               {importErrors.length > 0 && (

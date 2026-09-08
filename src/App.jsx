@@ -11,7 +11,7 @@ import ManageQuotes from './pages/ManageQuotes';
 import GenerateQuotes from './pages/GenerateQuotes';
 import BahanReels from './pages/BahanReels';
 import InstagramKu from './pages/InstagramKu';
-import QuotesKu from './pages/QuotesKu';
+import AllQuotes from './pages/AllQuotesKu';
 import Testing from './pages/Testing';
 
 function App() {
@@ -19,11 +19,12 @@ function App() {
     <Router>
       <AutoToTop />
       <Routes>
-        <Route path="/" element={<Home />} />
+        {/* <Route path="/" element={<Home />} /> */}
+        <Route path="/" element={<AllQuotes />} />
         <Route path="/tes" element={<Testing />} />
         <Route path="/add" element={<AddQuotes />} />
         <Route path="/manage" element={<ManageQuotes2 />} />
-        <Route path="/quotesku" element={<QuotesKu />} />
+        <Route path="/quotesku" element={<AllQuotes />} />
         <Route path="/saluran" element={<Saluran />} />
         <Route path="/instagramku" element={<InstagramKu />} />
         <Route path="/search" element={<Search />} />
