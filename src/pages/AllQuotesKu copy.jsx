@@ -68,8 +68,8 @@ function wrapText(ctx, text, maxWidth) {
   return lines;
 }
 
-// Fungsi generate gambar quote untuk FEED (1080x1080)
-const generateFeedImage = async (quote) => {
+// Fungsi generate gambar quote
+const generateQuoteImage = async (quote, author) => {
   return new Promise((resolve, reject) => {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
@@ -78,8 +78,16 @@ const generateFeedImage = async (quote) => {
     canvas.height = 1080;
 
     let bgImage = new Image();
+    let bgUrl = "/img/bg-storythur.png";
+
+    if (author.toLowerCase() === "fatkhurrhn") {
+      bgUrl = "/img/bg-fatkhurrhn.png";
+    } else if (author.toLowerCase() === "storythur") {
+      bgUrl = "/img/bg-storythur.png";
+    }
+
     bgImage.crossOrigin = "Anonymous";
-    bgImage.src = "/img/bg-storythur.png";
+    bgImage.src = bgUrl;
 
     bgImage.onload = () => {
       ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
@@ -104,7 +112,6 @@ const generateFeedImage = async (quote) => {
     };
 
     bgImage.onerror = () => {
-      // Fallback jika gambar tidak bisa dimuat
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -116,66 +123,6 @@ const generateFeedImage = async (quote) => {
       const maxWidth = 900;
       const wrapped = wrapText(ctx, quote, maxWidth);
       const lineHeight = 70;
-      const totalTextHeight = wrapped.length * lineHeight;
-      const startY = (canvas.height - totalTextHeight) / 2 + (lineHeight / 2);
-
-      wrapped.forEach((line, i) => {
-        ctx.fillText(line, canvas.width / 2, startY + i * lineHeight);
-      });
-
-      resolve(canvas.toDataURL("image/png"));
-    };
-  });
-};
-
-// Fungsi generate gambar quote untuk REELS (1080x1920)
-const generateReelsImage = async (quote) => {
-  return new Promise((resolve, reject) => {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-
-    canvas.width = 1080;
-    canvas.height = 1920;
-
-    let bgImage = new Image();
-    bgImage.crossOrigin = "Anonymous";
-    bgImage.src = "/img/bg-reels.png";
-
-    bgImage.onload = () => {
-      ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
-
-      ctx.fillStyle = "#000000";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.font = "52px Arial";
-
-      const maxWidth = 650;
-      const wrapped = wrapText(ctx, quote, maxWidth);
-      const lineHeight = 65;
-
-      const totalTextHeight = wrapped.length * lineHeight;
-      const startY = (canvas.height - totalTextHeight) / 2 + (lineHeight / 2);
-
-      wrapped.forEach((line, i) => {
-        ctx.fillText(line, canvas.width / 2, startY + i * lineHeight);
-      });
-
-      resolve(canvas.toDataURL("image/png"));
-    };
-
-    bgImage.onerror = () => {
-      // Fallback jika gambar tidak bisa dimuat
-      ctx.fillStyle = "#1a1a2e";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      ctx.fillStyle = "#ffffff";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.font = "64px Arial";
-
-      const maxWidth = 900;
-      const wrapped = wrapText(ctx, quote, maxWidth);
-      const lineHeight = 80;
       const totalTextHeight = wrapped.length * lineHeight;
       const startY = (canvas.height - totalTextHeight) / 2 + (lineHeight / 2);
 
@@ -196,8 +143,7 @@ export default function QuotesKu() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [sharingTextId, setSharingTextId] = useState(null);
-  const [sharingFeedId, setSharingFeedId] = useState(null);
-  const [sharingReelsId, setSharingReelsId] = useState(null);
+  const [sharingImageId, setSharingImageId] = useState(null);
   const [quoteStates, setQuoteStates] = useState({});
   const [sortType, setSortType] = useState("newest");
   const [togglingMark, setTogglingMark] = useState({});
@@ -290,63 +236,33 @@ export default function QuotesKu() {
     }
   };
 
-  // Share Feed image handler (1080x1080)
-  const handleShareFeed = async (q) => {
-    setSharingFeedId(q.id);
+  // Share image handler - untuk author storythur
+  const handleShareImage = async (q) => {
+    setSharingImageId(q.id);
     try {
-      const dataUrl = await generateFeedImage(q.text);
+      const dataUrl = await generateQuoteImage(q.text, q.author);
       const blob = await (await fetch(dataUrl)).blob();
-      const file = new File([blob], "quote-feed.png", { type: "image/png" });
+      const file = new File([blob], "quote.png", { type: "image/png" });
 
       if (navigator.share && navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
-          title: "Quote Feed",
+          title: "Quote",
           text: q.text,
         });
       } else {
         const link = document.createElement("a");
         link.href = dataUrl;
-        link.download = "quote-feed.png";
+        link.download = "quote.png";
         link.click();
       }
     } catch (err) {
       if (err.name !== "AbortError") {
-        console.error("Error sharing feed:", err);
-        alert("Gagal membuat gambar feed, silakan coba lagi");
+        console.error("Error sharing image:", err);
+        alert("Gagal membuat gambar, silakan coba lagi");
       }
     } finally {
-      setSharingFeedId(null);
-    }
-  };
-
-  // Share Reels image handler (1080x1920)
-  const handleShareReels = async (q) => {
-    setSharingReelsId(q.id);
-    try {
-      const dataUrl = await generateReelsImage(q.text);
-      const blob = await (await fetch(dataUrl)).blob();
-      const file = new File([blob], "quote-reels.png", { type: "image/png" });
-
-      if (navigator.share && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: "Quote Reels",
-          text: q.text,
-        });
-      } else {
-        const link = document.createElement("a");
-        link.href = dataUrl;
-        link.download = "quote-reels.png";
-        link.click();
-      }
-    } catch (err) {
-      if (err.name !== "AbortError") {
-        console.error("Error sharing reels:", err);
-        alert("Gagal membuat gambar reels, silakan coba lagi");
-      }
-    } finally {
-      setSharingReelsId(null);
+      setSharingImageId(null);
     }
   };
 
@@ -421,7 +337,6 @@ export default function QuotesKu() {
           likes: doc.data().likes || 0
         }));
 
-        // Hanya ambil quotes dengan author storythur
         const storythurQuotes = data.filter(
           (quote) => quote.author?.toLowerCase() === "storythur"
         );
@@ -538,6 +453,7 @@ export default function QuotesKu() {
             {filteredQuotes.length > 0 ? (
               filteredQuotes.map((q) => {
                 const state = quoteStates[q.id] || { isLiked: false, isLiking: false, likesCount: 0 };
+                const isStorythur = q.author?.toLowerCase() === "storythur";
                 const isMarked = q.status === "marked";
                 const isToggling = togglingMark[q.id] || false;
 
@@ -545,8 +461,8 @@ export default function QuotesKu() {
                   <div
                     key={q.id}
                     className={`bg-white rounded-xl p-4 shadow-sm border transition-all ${isMarked
-                      ? "border-green-300 bg-green-50/30"
-                      : "border-[#e5e7eb] hover:shadow-md"
+                        ? "border-green-300 bg-green-50/30"
+                        : "border-[#e5e7eb] hover:shadow-md"
                       }`}
                   >
                     {/* Header Card */}
@@ -587,12 +503,11 @@ export default function QuotesKu() {
                           <span className="text-xs text-gray-600">{state.likesCount}</span>
                         </button>
 
-                        {/* Share Text Button */}
+                        {/* Share Button */}
                         <button
                           onClick={() => handleShareText(q)}
                           disabled={sharingTextId === q.id}
                           className="flex items-center gap-1 group"
-                          title="Bagikan teks"
                         >
                           {sharingTextId === q.id ? (
                             <i className="ri-loader-4-line animate-spin text-lg text-gray-500"></i>
@@ -601,33 +516,21 @@ export default function QuotesKu() {
                           )}
                         </button>
 
-                        {/* Share Feed Button - 1080x1080 */}
-                        <button
-                          onClick={() => handleShareFeed(q)}
-                          disabled={sharingFeedId === q.id}
-                          className="flex items-center gap-1 group"
-                          title="Posting sebagai feed (1080x1080)"
-                        >
-                          {sharingFeedId === q.id ? (
-                            <i className="ri-loader-4-line animate-spin text-lg text-gray-500"></i>
-                          ) : (
-                            <i className="ri-image-line text-lg text-gray-500 group-hover:text-[#355485] transition-all"></i>
-                          )}
-                        </button>
-
-                        {/* Share Reels Button - 1080x1920 */}
-                        <button
-                          onClick={() => handleShareReels(q)}
-                          disabled={sharingReelsId === q.id}
-                          className="flex items-center gap-1 group"
-                          title="Posting sebagai reels (1080x1920)"
-                        >
-                          {sharingReelsId === q.id ? (
-                            <i className="ri-loader-4-line animate-spin text-lg text-gray-500"></i>
-                          ) : (
-                            <i className="ri-film-line text-lg text-gray-500 group-hover:text-[#355485] transition-all"></i>
-                          )}
-                        </button>
+                        {/* Posting Button - ONLY for storythur */}
+                        {isStorythur && (
+                          <button
+                            onClick={() => handleShareImage(q)}
+                            disabled={sharingImageId === q.id}
+                            className="flex items-center gap-1 group"
+                            title="Posting sebagai gambar"
+                          >
+                            {sharingImageId === q.id ? (
+                              <i className="ri-loader-4-line animate-spin text-lg text-gray-500"></i>
+                            ) : (
+                              <i className="ri-image-line text-lg text-gray-500 group-hover:text-[#355485] transition-all"></i>
+                            )}
+                          </button>
+                        )}
                       </div>
 
                       {/* Status Badge */}
