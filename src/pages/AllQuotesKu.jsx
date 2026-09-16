@@ -32,8 +32,8 @@ import PreviewModal from "../components/PreviewModal";
 
 /* ---------- Konfigurasi Background ---------- */
 
-const BG_START = 21;
-const BG_END = 60;
+const BG_START = 1;
+const BG_END = 100;
 const BG_FOLDER = "/background";
 const BG_EXT = ".png";
 
