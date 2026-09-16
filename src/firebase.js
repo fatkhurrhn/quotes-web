@@ -19,4 +19,6 @@ const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 
 export const myQuotesCollection = collection(db, "my-quotes");
+export const usedBackgroundsCollection = collection(db, "used-backgrounds");
+
 export { db, auth, serverTimestamp, googleProvider };

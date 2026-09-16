@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { myQuotesCollection } from "../firebase";
 import { addDoc, serverTimestamp } from "firebase/firestore";
 import BottomNav from "../components/BottomNav";
+import { Link } from "react-router-dom";
 
 const AddQuotes = () => {
     const [quote, setQuote] = useState("");
@@ -169,13 +170,15 @@ const AddQuotes = () => {
 
     return (
         <div className="min-h-screen bg-[#f9fafb] pb-16">
-            <BottomNav />
+            {/* <BottomNav /> */}
 
             {/* Header */}
             <div className="bg-gradient-to-r from-[#2a436c] to-[#355485] pt-10 pb-8 rounded-b-3xl shadow-md">
                 <div className="max-w-lg mx-auto px-5">
                     <div className="text-center">
-                        <h1 className="text-2xl font-bold text-white mb-1">Tambah Quotes</h1>
+                       <Link to="/">
+                            <h1 className="text-2xl font-bold text-white mb-1">Tambah Quotes</h1>
+                       </Link>
                         <p className="text-[#cbdde9] text-xs">Bagikan kata-kata bijakmu</p>
                     </div>
                 </div>
