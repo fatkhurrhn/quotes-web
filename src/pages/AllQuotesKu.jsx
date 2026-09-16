@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   myQuotesCollection,
   usedBackgroundsCollection,
@@ -61,13 +61,13 @@ const getRelativeTime = (timestamp) => {
   const diffMonths = Math.floor(diffDays / 30);
   const diffYears = Math.floor(diffDays / 365);
 
-  if (diffYears > 0) return `${diffYears} tahun lalu`;
-  if (diffMonths > 0) return `${diffMonths} bulan lalu`;
-  if (diffWeeks > 0) return `${diffWeeks} minggu lalu`;
-  if (diffDays > 0) return `${diffDays} hari lalu`;
+  if (diffYears > 0) return `${diffYears} thn lalu`;
+  if (diffMonths > 0) return `${diffMonths} bln lalu`;
+  if (diffWeeks > 0) return `${diffWeeks} mgg lalu`;
+  if (diffDays > 0) return `${diffDays} hr lalu`;
   if (diffHours > 0) return `${diffHours} jam lalu`;
-  if (diffMins > 0) return `${diffMins} menit lalu`;
-  if (diffSecs > 10) return `${diffSecs} detik lalu`;
+  if (diffMins > 0) return `${diffMins} mnt lalu`;
+  if (diffSecs > 10) return `${diffSecs} dtk lalu`;
   return "baru saja";
 };
 
@@ -116,9 +116,7 @@ async function releaseBackground(path) {
   try {
     const snap = await getDocs(usedBackgroundsCollection);
     const found = snap.docs.find((d) => d.data().path === path);
-    if (found) {
-      await deleteDoc(found.ref);
-    }
+    if (found) await deleteDoc(found.ref);
   } catch (err) {
     console.error("Error release bg:", err);
   }
@@ -193,10 +191,10 @@ const generateReelsImage = async (quote, bgPath) => {
       ctx.font = "52px Arial";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillStyle = "#ffffff";      // teks putih
-      ctx.strokeStyle = "#000000";    // outline hitam
-      ctx.lineWidth = 8;              // ketebalan outline
-      ctx.lineJoin = "round";         // sudut outline halus
+      ctx.fillStyle = "#ffffff";
+      ctx.strokeStyle = "#000000";
+      ctx.lineWidth = 8;
+      ctx.lineJoin = "round";
 
       const wrapped = wrapText(ctx, quote, 650);
       const lineHeight = 65;
@@ -205,8 +203,8 @@ const generateReelsImage = async (quote, bgPath) => {
 
       wrapped.forEach((line, i) => {
         const y = startY + i * lineHeight;
-        ctx.strokeText(line, canvas.width / 2, y);  // outline dulu
-        ctx.fillText(line, canvas.width / 2, y);    // baru isi putih
+        ctx.strokeText(line, canvas.width / 2, y);
+        ctx.fillText(line, canvas.width / 2, y);
       });
 
       resolve(canvas.toDataURL("image/png"));
@@ -219,11 +217,25 @@ const generateReelsImage = async (quote, bgPath) => {
     bgImage.onerror = () => {
       ctx.fillStyle = "#1a1a2e";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "#ffffff";
       drawContent();
     };
   });
 };
+
+/* ---------- Helper: share or download ---------- */
+async function shareOrDownload(dataUrl, filename, title, text) {
+  const blob = await (await fetch(dataUrl)).blob();
+  const file = new File([blob], filename, { type: "image/png" });
+
+  if (navigator.share && navigator.canShare({ files: [file] })) {
+    await navigator.share({ files: [file], title, text });
+  } else {
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = filename;
+    link.click();
+  }
+}
 
 /* ---------- Helper: copy text ---------- */
 async function copyToClipboard(text) {
@@ -232,7 +244,6 @@ async function copyToClipboard(text) {
       await navigator.clipboard.writeText(text);
       return true;
     }
-    // Fallback: textarea manual
     const ta = document.createElement("textarea");
     ta.value = text;
     ta.style.position = "fixed";
@@ -251,22 +262,40 @@ async function copyToClipboard(text) {
 /* ---------- Main Component ---------- */
 export default function QuotesKu() {
   const [allQuotes, setAllQuotes] = useState([]);
-  const [displayQuotes, setDisplayQuotes] = useState([]);
   const [filteredQuotes, setFilteredQuotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortType, setSortType] = useState("newest");
-
   const [quoteStates, setQuoteStates] = useState({});
   const [copiedId, setCopiedId] = useState(null);
 
-  // Modal state
+  // Search visibility (auto hide on scroll)
+  const [showSearch, setShowSearch] = useState(true);
+  const lastScrollY = useRef(0);
+
+  // Modal
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalType, setModalType] = useState(null); // "reels" | "feed"
+  const [modalType, setModalType] = useState(null);
   const [modalQuote, setModalQuote] = useState(null);
   const [modalImage, setModalImage] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
-  const [modalCopied, setModalCopied] = useState(false);
+  const [modalSharing, setModalSharing] = useState(false);
+
+  /* ---------- Scroll listener: hide search on scroll down ---------- */
+  useEffect(() => {
+    const onScroll = () => {
+      const currentY = window.scrollY;
+      // Kalau scroll ke atas (currentY < lastScrollY) & sudah lewat 100px → tampilkan
+      // Kalau scroll ke bawah & sudah lewat 100px → sembunyikan
+      if (currentY > lastScrollY.current && currentY > 100) {
+        setShowSearch(false);
+      } else if (currentY < lastScrollY.current) {
+        setShowSearch(true);
+      }
+      lastScrollY.current = currentY;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   /* ---------- Like ---------- */
   const handleLike = async (id, currentLikes, currentLikeStatus) => {
@@ -300,24 +329,12 @@ export default function QuotesKu() {
     }
   };
 
-  /* ---------- Salin teks dari card ---------- */
+  /* ---------- Copy text dari card ---------- */
   const handleCopyFromCard = async (q) => {
     const ok = await copyToClipboard(q.text);
     if (ok) {
       setCopiedId(q.id);
       setTimeout(() => setCopiedId(null), 1500);
-    } else {
-      alert("Gagal menyalin teks");
-    }
-  };
-
-  /* ---------- Salin teks dari modal ---------- */
-  const handleCopyFromModal = async () => {
-    if (!modalQuote) return;
-    const ok = await copyToClipboard(modalQuote.text);
-    if (ok) {
-      setModalCopied(true);
-      setTimeout(() => setModalCopied(false), 1500);
     } else {
       alert("Gagal menyalin teks");
     }
@@ -330,11 +347,9 @@ export default function QuotesKu() {
     setModalOpen(true);
     setModalLoading(true);
     setModalImage(null);
-    setModalCopied(false);
 
     try {
       let bgPath = q.reelsBg;
-
       if (!bgPath) {
         bgPath = await getRandomUnusedBackground();
         const ref = doc(myQuotesCollection, q.id);
@@ -345,7 +360,6 @@ export default function QuotesKu() {
         setFilteredQuotes(updateFn);
         setModalQuote((prev) => ({ ...prev, reelsBg: bgPath }));
       }
-
       const dataUrl = await generateReelsImage(q.text, bgPath);
       setModalImage(dataUrl);
     } catch (err) {
@@ -362,7 +376,6 @@ export default function QuotesKu() {
     setModalOpen(true);
     setModalLoading(true);
     setModalImage(null);
-    setModalCopied(false);
 
     try {
       const dataUrl = await generateFeedImage(q.text);
@@ -379,7 +392,25 @@ export default function QuotesKu() {
     setModalType(null);
     setModalQuote(null);
     setModalImage(null);
-    setModalCopied(false);
+  };
+
+  /* ---------- Share dari Modal ---------- */
+  const handleModalShare = async () => {
+    if (!modalImage || !modalQuote) return;
+    setModalSharing(true);
+    try {
+      const isReels = modalType === "reels";
+      const filename = isReels ? "quote-reels.png" : "quote-feed.png";
+      const title = isReels ? "Quote Reels" : "Quote Feed";
+      await shareOrDownload(modalImage, filename, title, modalQuote.text);
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        console.error("Error sharing:", err);
+        alert("Gagal membagikan, silakan coba lagi");
+      }
+    } finally {
+      setModalSharing(false);
+    }
   };
 
   /* ---------- Toggle Mark Reels / Feed ---------- */
@@ -436,8 +467,8 @@ export default function QuotesKu() {
     }
   };
 
-  /* ---------- Filter & Sort ---------- */
-  const applyFiltersAndSort = (quotes, search, sort) => {
+  /* ---------- Apply Filter & Sort ---------- */
+  const applyFiltersAndSort = (quotes, search) => {
     let result = [...quotes];
     if (search.trim()) {
       const keyword = search.toLowerCase();
@@ -447,43 +478,37 @@ export default function QuotesKu() {
           q.author?.toLowerCase().includes(keyword)
       );
     }
-    switch (sort) {
-      case "newest":
-        result.sort((a, b) => {
-          const dA = a.createdAt?.toDate
-            ? a.createdAt.toDate()
-            : new Date(a.createdAt);
-          const dB = b.createdAt?.toDate
-            ? b.createdAt.toDate()
-            : new Date(b.createdAt);
-          return dB - dA;
-        });
-        break;
-      case "oldest":
-        result.sort((a, b) => {
-          const dA = a.createdAt?.toDate
-            ? a.createdAt.toDate()
-            : new Date(a.createdAt);
-          const dB = b.createdAt?.toDate
-            ? b.createdAt.toDate()
-            : new Date(b.createdAt);
-          return dA - dB;
-        });
-        break;
-      case "random":
-        result.sort(() => Math.random() - 0.5);
-        break;
-    }
+    // Default: terbaru
+    result.sort((a, b) => {
+      const dA = a.createdAt?.toDate
+        ? a.createdAt.toDate()
+        : new Date(a.createdAt);
+      const dB = b.createdAt?.toDate
+        ? b.createdAt.toDate()
+        : new Date(b.createdAt);
+      return dB - dA;
+    });
     return result;
   };
 
   useEffect(() => {
     if (allQuotes.length > 0) {
-      const filtered = applyFiltersAndSort(allQuotes, searchTerm, sortType);
+      const filtered = applyFiltersAndSort(allQuotes, searchTerm);
       setFilteredQuotes(filtered);
-      setDisplayQuotes(filtered);
     }
-  }, [searchTerm, sortType, allQuotes]);
+  }, [searchTerm, allQuotes]);
+
+  /* ---------- Shuffle (FAB) ---------- */
+  const handleShuffle = () => {
+    setFilteredQuotes((prev) => {
+      const arr = [...prev];
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    });
+  };
 
   /* ---------- Fetch Quotes ---------- */
   useEffect(() => {
@@ -517,13 +542,7 @@ export default function QuotesKu() {
         });
         setQuoteStates(initialStates);
 
-        const initialDisplay = applyFiltersAndSort(
-          storythurQuotes,
-          "",
-          "newest"
-        );
-        setDisplayQuotes(initialDisplay);
-        setFilteredQuotes(initialDisplay);
+        setFilteredQuotes(applyFiltersAndSort(storythurQuotes, ""));
       } catch (err) {
         console.error("Error fetch quotes:", err);
       } finally {
@@ -541,63 +560,67 @@ export default function QuotesKu() {
       return "Tidak ada quote yang ditemukan";
     }
     if (searchTerm)
-      return `Menampilkan ${filteredQuotes.length} hasil untuk "${searchTerm}"`;
-    return `${filteredQuotes.length} quotes dari storythur`;
+      return `${filteredQuotes.length} hasil untuk "${searchTerm}"`;
+    return `${filteredQuotes.length} quotes`;
   };
 
   return (
-    <div className="min-h-screen bg-[#f9fafb] pb-16">
+    <div className="min-h-screen bg-gradient-to-b from-[#f0f4f8] to-[#f9fafb] pb-24">
       <BottomAdd />
 
-      {/* Search Bar */}
-      <div className="max-w-lg mx-auto px-5 pt-4">
-        <div className="flex gap-2 items-center">
-          <div className="relative flex-1">
-            <i className="ri-search-line absolute left-4 top-1/2 transform -translate-y-1/2 text-[#9ca3af] text-lg"></i>
-            <input
-              type="text"
-              placeholder="Cari quotes..."
-              className="w-full p-3 pl-11 rounded-xl border border-[#e5e7eb] bg-white focus:outline-none focus:border-[#4f90c6] focus:ring-1 focus:ring-[#4f90c6] text-sm shadow-sm"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm("")}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#9ca3af] hover:text-gray-600"
-              >
-                <i className="ri-close-line text-lg"></i>
-              </button>
-            )}
+      {/* Header + Search (sticky, auto-hide) */}
+      <div
+        className={`sticky top-0 z-40 transition-transform duration-300 ${showSearch ? "translate-y-0" : "-translate-y-full"
+          }`}
+      >
+        <div className="bg-white/80 backdrop-blur-lg border-b border-gray-100 shadow-sm">
+          {/* Title */}
+          <div className="max-w-lg mx-auto px-5 pt-4 pb-2 flex items-center gap-2">
+            <div className="w-9 h-9 bg-gradient-to-tr from-[#355485] to-[#4f90c6] rounded-xl flex items-center justify-center shadow-md shadow-[#4f90c6]/30">
+              <i className="ri-quill-pen-fill text-white text-lg"></i>
+            </div>
+            <div>
+              <h1 className="text-base font-bold text-gray-800 leading-tight">
+                Quotes
+              </h1>
+              <p className="text-[10px] text-gray-500">
+                {getDisplayMessage()}
+              </p>
+            </div>
           </div>
-          <div className="relative">
-            <select
-              value={sortType}
-              onChange={(e) => setSortType(e.target.value)}
-              className="appearance-none bg-white border border-[#e5e7eb] rounded-xl px-3 py-2.5 pr-8 text-xs font-medium text-gray-700 focus:outline-none focus:border-[#4f90c6] focus:ring-1 focus:ring-[#4f90c6] shadow-sm cursor-pointer"
-            >
-              <option value="newest">Terbaru</option>
-              <option value="oldest">Terlama</option>
-              <option value="random">Acak</option>
-            </select>
-            <i className="ri-arrow-down-s-line absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none text-sm"></i>
+
+          {/* Search */}
+          <div className="max-w-lg mx-auto px-5 pb-3">
+            <div className="relative">
+              <i className="ri-search-line absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base"></i>
+              <input
+                type="text"
+                placeholder="Cari quotes..."
+                className="w-full py-2.5 pl-11 pr-10 rounded-2xl border border-gray-200 bg-gray-50 focus:bg-white focus:outline-none focus:border-[#4f90c6] focus:ring-2 focus:ring-[#4f90c6]/20 text-sm transition-all"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-200 transition"
+                >
+                  <i className="ri-close-line text-base text-gray-500"></i>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Info */}
-      <div className="max-w-lg mx-auto px-5 mt-3 mb-3">
-        <p className="text-xs text-[#6b7280]">{getDisplayMessage()}</p>
-      </div>
-
       {/* List */}
-      <div className="max-w-lg mx-auto px-5 pb-8">
+      <div className="max-w-lg mx-auto px-4 pt-4 pb-8">
         {loading ? (
           <div className="space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
               <div
                 key={i}
-                className="bg-white rounded-xl p-4 shadow-sm border border-[#e5e7eb] animate-pulse"
+                className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 animate-pulse"
               >
                 <div className="h-4 bg-gray-200 rounded w-24 mb-3"></div>
                 <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
@@ -621,120 +644,122 @@ export default function QuotesKu() {
                 return (
                   <div
                     key={q.id}
-                    className="bg-white rounded-xl p-4 shadow-sm border border-[#e5e7eb] hover:shadow-md transition-all"
+                    className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 hover:shadow-md active:scale-[0.99] transition-all"
                   >
                     {/* Header */}
                     <div className="flex justify-between items-start mb-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-gradient-to-tr from-[#355485] to-[#4f90c6] rounded-full flex items-center justify-center">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 bg-gradient-to-tr from-[#355485] to-[#4f90c6] rounded-2xl flex items-center justify-center shadow-sm">
                           <i className="ri-user-fill text-white text-sm"></i>
                         </div>
                         <div>
-                          <h3 className="text-sm font-semibold text-gray-800">
+                          <h3 className="text-sm font-semibold text-gray-800 leading-tight">
                             {q.author}
                           </h3>
-                          <p className="text-xs text-[#9ca3af]">
+                          <p className="text-[11px] text-gray-400">
                             {getRelativeTime(q.createdAt)}
                           </p>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Status Indicators — SELALU TAMPIL */}
-                    <div className="flex gap-1.5 mb-3">
-                      <span
-                        className={`text-[10px] px-2 py-1 rounded-full font-medium flex items-center gap-1 ${isReelsMarked
-                            ? "bg-purple-100 text-purple-700"
-                            : "bg-gray-100 text-gray-400"
-                          }`}
-                      >
-                        <i
-                          className={`${isReelsMarked
-                              ? "ri-checkbox-circle-fill"
-                              : "ri-checkbox-blank-circle-line"
-                            } text-xs`}
-                        ></i>
-                        Reels {isReelsMarked ? "✓" : ""}
-                      </span>
-                      <span
-                        className={`text-[10px] px-2 py-1 rounded-full font-medium flex items-center gap-1 ${isFeedMarked
-                            ? "bg-pink-100 text-pink-700"
-                            : "bg-gray-100 text-gray-400"
-                          }`}
-                      >
-                        <i
-                          className={`${isFeedMarked
-                              ? "ri-checkbox-circle-fill"
-                              : "ri-checkbox-blank-circle-line"
-                            } text-xs`}
-                        ></i>
-                        Feed {isFeedMarked ? "✓" : ""}
-                      </span>
+                      {/* Status badges */}
+                      <div className="flex gap-1.5">
+                        <span
+                          className={`text-[10px] px-2 py-1 rounded-full font-semibold flex items-center gap-1 transition-all ${isReelsMarked
+                              ? "bg-purple-100 text-purple-700"
+                              : "bg-gray-100 text-gray-400"
+                            }`}
+                          title={isReelsMarked ? "Reels sudah" : "Reels belum"}
+                        >
+                          <i
+                            className={`${isReelsMarked
+                                ? "ri-checkbox-circle-fill"
+                                : "ri-film-line"
+                              } text-xs`}
+                          ></i>
+                          Reels
+                        </span>
+                        <span
+                          className={`text-[10px] px-2 py-1 rounded-full font-semibold flex items-center gap-1 transition-all ${isFeedMarked
+                              ? "bg-pink-100 text-pink-700"
+                              : "bg-gray-100 text-gray-400"
+                            }`}
+                          title={isFeedMarked ? "Feed sudah" : "Feed belum"}
+                        >
+                          <i
+                            className={`${isFeedMarked
+                                ? "ri-checkbox-circle-fill"
+                                : "ri-image-line"
+                              } text-xs`}
+                          ></i>
+                          Feed
+                        </span>
+                      </div>
                     </div>
 
                     {/* Text */}
-                    <p className="text-gray-700 text-sm leading-relaxed mb-3">
+                    <p className="text-gray-700 text-[15px] leading-relaxed mb-4 font-[450]">
                       {highlightText(q.text, searchTerm)}
                     </p>
 
                     {/* Actions */}
-                    <div className="flex items-center justify-between pt-2 border-t border-[#e5e7eb]">
-                      <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                      <div className="flex items-center gap-1">
                         {/* Like */}
                         <button
                           onClick={() =>
                             handleLike(q.id, state.likesCount, state.isLiked)
                           }
                           disabled={state.isLiking}
-                          className="flex items-center gap-1 group"
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-gray-50 active:scale-95 transition"
                         >
                           <i
                             className={`ri-heart-${state.isLiked ? "fill" : "line"
                               } text-lg ${state.isLiked
                                 ? "text-red-500"
-                                : "text-gray-500 group-hover:text-red-500"
+                                : "text-gray-500"
                               }`}
                           ></i>
-                          <span className="text-xs text-gray-600">
+                          <span className="text-xs font-medium text-gray-600">
                             {state.likesCount}
                           </span>
                         </button>
 
-                        {/* Copy Text */}
+                        {/* Copy */}
                         <button
                           onClick={() => handleCopyFromCard(q)}
-                          className="group flex items-center gap-1"
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-gray-50 active:scale-95 transition"
                           title="Salin teks"
                         >
                           <i
                             className={`${isCopied
                                 ? "ri-check-line text-emerald-500"
-                                : "ri-file-copy-line text-gray-500 group-hover:text-emerald-500"
-                              } text-lg transition-all`}
+                                : "ri-file-copy-line text-gray-500"
+                              } text-lg`}
                           ></i>
                           {isCopied && (
-                            <span className="text-[10px] text-emerald-600 font-medium">
+                            <span className="text-[11px] font-medium text-emerald-600">
                               Tersalin
                             </span>
                           )}
                         </button>
+                      </div>
 
-                        {/* Feed */}
+                      {/* Preview buttons */}
+                      <div className="flex items-center gap-1">
                         <button
                           onClick={() => openFeedModal(q)}
-                          className="group"
-                          title="Preview Feed (1080x1080)"
+                          className="w-9 h-9 flex items-center justify-center rounded-xl bg-pink-50 hover:bg-pink-100 active:scale-95 transition"
+                          title="Preview Feed"
                         >
-                          <i className="ri-image-line text-lg text-gray-500 group-hover:text-pink-500"></i>
+                          <i className="ri-image-line text-base text-pink-600"></i>
                         </button>
-
-                        {/* Reels */}
                         <button
                           onClick={() => openReelsModal(q)}
-                          className="group"
-                          title="Preview Reels (1080x1920)"
+                          className="w-9 h-9 flex items-center justify-center rounded-xl bg-purple-50 hover:bg-purple-100 active:scale-95 transition"
+                          title="Preview Reels"
                         >
-                          <i className="ri-film-line text-lg text-gray-500 group-hover:text-purple-500"></i>
+                          <i className="ri-film-line text-base text-purple-600"></i>
                         </button>
                       </div>
                     </div>
@@ -742,18 +767,35 @@ export default function QuotesKu() {
                 );
               })
             ) : (
-              <div className="text-center py-12 bg-white rounded-xl border border-[#e5e7eb]">
-                <i className="ri-inbox-line text-5xl text-[#cbdde9] mb-3"></i>
-                <p className="text-[#6b7280] text-sm">
+              <div className="text-center py-16 bg-white rounded-3xl border border-gray-100">
+                <i className="ri-inbox-line text-5xl text-gray-300 mb-3"></i>
+                <p className="text-gray-500 text-sm">
                   {searchTerm
-                    ? `Tidak ada quote yang mengandung kata "${searchTerm}"`
+                    ? `Tidak ada quote dengan kata "${searchTerm}"`
                     : "Tidak ada quote yang ditemukan"}
                 </p>
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm("")}
+                    className="mt-3 text-[#4f90c6] text-xs font-medium"
+                  >
+                    Hapus pencarian
+                  </button>
+                )}
               </div>
             )}
           </div>
         )}
       </div>
+
+      {/* FAB Acak — kiri bawah */}
+      <button
+        onClick={handleShuffle}
+        className="fixed bottom-24 left-5 z-40 w-14 h-14 rounded-full bg-gradient-to-tr from-[#355485] to-[#4f90c6] text-white shadow-lg shadow-[#4f90c6]/40 flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
+        title="Acak quotes"
+      >
+        <i className="ri-shuffle-line text-2xl"></i>
+      </button>
 
       {/* Modal Preview */}
       <PreviewModal
@@ -770,8 +812,8 @@ export default function QuotesKu() {
         onToggleMark={
           modalType === "reels" ? handleToggleReelsMark : handleToggleFeedMark
         }
-        onCopyText={handleCopyFromModal}
-        copied={modalCopied}
+        onShare={handleModalShare}
+        sharing={modalSharing}
       />
     </div>
   );
