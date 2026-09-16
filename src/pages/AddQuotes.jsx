@@ -1,73 +1,60 @@
 import { useState, useEffect } from "react";
+import {
+    X,
+    History,
+    Quote,
+    Info,
+    Send,
+    LoaderCircle,
+    CheckCircle2,
+    AlertCircle,
+    Trash2,
+    Inbox,
+    Clock3,
+} from "lucide-react";
 import { myQuotesCollection } from "../firebase";
 import { addDoc, serverTimestamp } from "firebase/firestore";
-import BottomNav from "../components/BottomNav";
 import { Link } from "react-router-dom";
+
+const DEFAULT_AUTHOR = "storythur";
+const DEFAULT_CATEGORY = "";
 
 const AddQuotes = () => {
     const [quote, setQuote] = useState("");
-    const [author, setAuthor] = useState("");
-    const [category, setCategory] = useState("motivation");
     const [isLoading, setIsLoading] = useState(false);
+
     const [showNotification, setShowNotification] = useState(false);
     const [notificationMessage, setNotificationMessage] = useState("");
     const [notificationType, setNotificationType] = useState("success");
 
-    // History drawer state
     const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
-
-    // Author history state
-    const [authorHistory, setAuthorHistory] = useState([]);
-
-    // History state
     const [quoteHistory, setQuoteHistory] = useState([]);
 
-    // Load history from localStorage
+    // Load quote history from localStorage
     useEffect(() => {
         const savedHistory = localStorage.getItem("quoteHistory");
-        if (savedHistory) {
-            setQuoteHistory(JSON.parse(savedHistory));
-        }
 
-        // Load author history
-        const savedAuthors = localStorage.getItem("authorHistory");
-        if (savedAuthors) {
-            setAuthorHistory(JSON.parse(savedAuthors));
+        if (savedHistory) {
+            try {
+                setQuoteHistory(JSON.parse(savedHistory));
+            } catch (error) {
+                console.error("Failed to load quote history:", error);
+            }
         }
     }, []);
 
-    // Save author to history when submitting
-    const saveAuthorToHistory = (authorName) => {
-        if (!authorName.trim()) return;
-
-        // Hapus yang duplikat, tambahkan yang baru di awal
-        const updatedAuthors = [
-            authorName,
-            ...authorHistory.filter(a => a !== authorName)
-        ].slice(0, 10);
-
-        setAuthorHistory(updatedAuthors);
-        localStorage.setItem("authorHistory", JSON.stringify(updatedAuthors));
-    };
-
-    // Save history to localStorage
+    // Save quote to history
     const saveToHistory = (newQuote) => {
         const updatedHistory = [newQuote, ...quoteHistory].slice(0, 10);
+
         setQuoteHistory(updatedHistory);
-        localStorage.setItem("quoteHistory", JSON.stringify(updatedHistory));
+        localStorage.setItem(
+            "quoteHistory",
+            JSON.stringify(updatedHistory)
+        );
     };
 
-    // Handle manual author change
-    const handleManualAuthor = (e) => {
-        setAuthor(e.target.value);
-    };
-
-    // Pilih author dari history
-    const selectAuthorFromHistory = (selectedAuthor) => {
-        setAuthor(selectedAuthor);
-    };
-
-    // Show notification popup
+    // Show notification
     const showPopupNotification = (message, isError = false) => {
         setNotificationMessage(message);
         setNotificationType(isError ? "error" : "success");
@@ -75,19 +62,28 @@ const AddQuotes = () => {
 
         setTimeout(() => {
             setShowNotification(false);
-        }, 2000);
+        }, 2500);
     };
 
-    // Handle Submit - dengan status PENDING
-    const handleSubmit = async (e) => {
-        e.preventDefault();
+    // Handle submit
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+
+        if (!quote.trim()) {
+            showPopupNotification(
+                "Isi quote terlebih dahulu",
+                true
+            );
+            return;
+        }
+
         setIsLoading(true);
 
         try {
             const newQuote = {
-                text: quote,
-                author: author,
-                category: category,
+                text: quote.trim(),
+                author: DEFAULT_AUTHOR,
+                category: DEFAULT_CATEGORY,
                 status: "pending",
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
@@ -97,60 +93,61 @@ const AddQuotes = () => {
 
             await addDoc(myQuotesCollection, newQuote);
 
-            // ✅ KIRIM NOTIFIKASI TELEGRAM (dalam try block)
+            // Send Telegram notification
             try {
-                await fetch('/api/send-telegram', {
-                    method: 'POST',
+                await fetch("/api/send-telegram", {
+                    method: "POST",
                     headers: {
-                        'Content-Type': 'application/json',
+                        "Content-Type": "application/json",
                     },
                     body: JSON.stringify({
-                        type: 'new_quote',     // ← WAJIB tambahin ini!
-                        author: author,
-                        quoteText: quote,
+                        type: "new_quote",
+                        author: DEFAULT_AUTHOR,
+                        quoteText: quote.trim(),
                     }),
                 });
-                console.log('Telegram notification sent');
-            } catch (teleError) {
-                console.error('Failed to send Telegram notification:', teleError);
-                // Notifikasi gagal, tapi quote tetap tersimpan
+
+                console.log("Telegram notification sent");
+            } catch (telegramError) {
+                console.error(
+                    "Failed to send Telegram notification:",
+                    telegramError
+                );
             }
 
-            // Save author to history
-            saveAuthorToHistory(author);
-
-            // Simpan ke history
+            // Save quote history
             saveToHistory({
-                text: quote,
-                author: author,
-                category: category,
-                timestamp: new Date().toISOString()
+                text: quote.trim(),
+                author: DEFAULT_AUTHOR,
+                category: DEFAULT_CATEGORY,
+                timestamp: new Date().toISOString(),
             });
 
             // Reset form
             setQuote("");
-            setAuthor("");
-            setCategory("motivation");
 
-            showPopupNotification("Quote berhasil ditambahkan! Menunggu persetujuan admin.");
-
+            showPopupNotification(
+                "Quote berhasil ditambahkan! Menunggu persetujuan admin."
+            );
         } catch (error) {
-            console.error("Error adding quote: ", error);
-            showPopupNotification("Terjadi kesalahan saat menambahkan quote", true);
+            console.error("Error adding quote:", error);
+
+            showPopupNotification(
+                "Terjadi kesalahan saat menambahkan quote",
+                true
+            );
         } finally {
             setIsLoading(false);
         }
     };
 
-    // Load history item ke form
+    // Load history item into form
     const loadHistoryItem = (item) => {
-        setQuote(item.text);
-        setAuthor(item.author);
-        setCategory(item.category);
+        setQuote(item.text || "");
         setIsHistoryDrawerOpen(false);
     };
 
-    // Clear all history
+    // Clear all quote history
     const clearHistory = () => {
         if (window.confirm("Hapus semua history quote?")) {
             setQuoteHistory([]);
@@ -159,148 +156,172 @@ const AddQuotes = () => {
         }
     };
 
-    // Clear author history
-    const clearAuthorHistory = () => {
-        if (window.confirm("Hapus semua riwayat author?")) {
-            setAuthorHistory([]);
-            localStorage.removeItem("authorHistory");
-            showPopupNotification("Riwayat author berhasil dihapus");
-        }
-    };
-
     return (
-        <div className="min-h-screen bg-[#f9fafb] pb-16">
-            {/* <BottomNav /> */}
-
+        <div className="min-h-screen bg-[#f7f8fa] pb-10">
             {/* Header */}
-            <div className="bg-gradient-to-r from-[#2a436c] to-[#355485] pt-10 pb-8 rounded-b-3xl shadow-md">
-                <div className="max-w-lg mx-auto px-5">
-                    <div className="text-center">
-                       <Link to="/">
-                            <h1 className="text-2xl font-bold text-white mb-1">Tambah Quotes</h1>
-                       </Link>
-                        <p className="text-[#cbdde9] text-xs">Bagikan kata-kata bijakmu</p>
+            <header className="border-b border-gray-100 bg-white">
+                <div className="mx-auto max-w-2xl px-5 pb-7 pt-8 sm:px-6 sm:pb-8 sm:pt-10">
+                    <div className="flex items-center justify-between gap-4">
+                        <div>
+                            <Link
+                                to="/"
+                                className="group inline-flex items-center gap-2"
+                            >
+                                <span className="flex h-8 w-8 items-center justify-center bg-[#355485] text-white">
+                                    <Quote
+                                        size={16}
+                                        strokeWidth={1.8}
+                                    />
+                                </span>
+
+                                <span className="text-sm font-semibold tracking-tight text-gray-900">
+                                    QuotesKu
+                                </span>
+                            </Link>
+
+                            <div className="mt-7">
+                                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#4f90c6]">
+                                    Contribution
+                                </p>
+
+                                <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
+                                    Tambah Quotes
+                                </h1>
+
+                                <p className="mt-2 max-w-sm text-sm leading-relaxed text-gray-500">
+                                    Bagikan kata-kata bijak, pengalaman, atau
+                                    pengingat yang bermakna.
+                                </p>
+                            </div>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => setIsHistoryDrawerOpen(true)}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center border border-gray-200 bg-white text-gray-500 transition hover:border-[#4f90c6] hover:text-[#355485] active:scale-95"
+                            title="Lihat history"
+                            aria-label="Lihat history"
+                        >
+                            <History
+                                size={19}
+                                strokeWidth={1.8}
+                            />
+                        </button>
                     </div>
                 </div>
-            </div>
+            </header>
 
-            {/* Notification Popup */}
+            {/* Notification */}
             {showNotification && (
-                <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-bounce">
-                    <div className={`px-5 py-3 rounded-xl shadow-lg flex items-center gap-2 ${notificationType === "error"
-                            ? "bg-red-500 text-white"
-                            : "bg-green-500 text-white"
-                        }`}>
-                        <i className={`${notificationType === "error" ? "ri-error-warning-line" : "ri-checkbox-circle-line"} text-xl`}></i>
-                        <span className="text-sm font-medium">{notificationMessage}</span>
+                <div className="fixed left-1/2 top-5 z-[70] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2">
+                    <div
+                        className={`flex items-start gap-3 border px-4 py-3.5 shadow-xl ${notificationType === "error"
+                                ? "border-red-100 bg-white text-red-700"
+                                : "border-green-100 bg-white text-green-700"
+                            }`}
+                    >
+                        <div
+                            className={`mt-0.5 shrink-0 ${notificationType === "error"
+                                    ? "text-red-500"
+                                    : "text-green-500"
+                                }`}
+                        >
+                            {notificationType === "error" ? (
+                                <AlertCircle
+                                    size={18}
+                                    strokeWidth={1.9}
+                                />
+                            ) : (
+                                <CheckCircle2
+                                    size={18}
+                                    strokeWidth={1.9}
+                                />
+                            )}
+                        </div>
+
+                        <p className="text-xs font-medium leading-relaxed">
+                            {notificationMessage}
+                        </p>
                     </div>
                 </div>
             )}
 
-            {/* Form */}
-            <div className="max-w-lg mx-auto px-5 -mt-5">
-                <div className="bg-white rounded-2xl shadow-sm border border-[#e5e7eb] p-5">
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        {/* Quote Textarea with History Icon */}
+            {/* Main Form */}
+            <main className="mx-auto max-w-2xl px-5 pt-6 sm:px-6 sm:pt-8">
+                <div className="border border-gray-200 bg-white shadow-sm">
+                    <form
+                        onSubmit={handleSubmit}
+                        className="space-y-6 p-5 sm:p-7"
+                    >
+                        {/* Quote */}
                         <div>
-                            <div className="flex justify-between items-center mb-2">
-                                <label className="block text-sm font-medium text-gray-700">
-                                    <i className="ri-double-quotes-L text-[#355485] mr-1"></i>
+                            <div className="mb-2.5 flex items-center justify-between gap-3">
+                                <label
+                                    htmlFor="quote"
+                                    className="flex items-center gap-2 text-sm font-semibold text-gray-800"
+                                >
+                                    <Quote
+                                        size={16}
+                                        strokeWidth={1.8}
+                                        className="text-[#355485]"
+                                    />
                                     Isi Quote
                                 </label>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsHistoryDrawerOpen(true)}
-                                    className="text-[#355485] hover:text-[#2a436c] transition-colors"
-                                    title="Lihat History"
-                                >
-                                    <i className="ri-history-line text-lg"></i>
-                                </button>
+
+                                <span className="text-[10px] font-medium uppercase tracking-wider text-gray-400">
+                                    {quote.length} karakter
+                                </span>
                             </div>
+
                             <textarea
+                                id="quote"
+                                name="quote"
                                 placeholder="Tulis quote-mu di sini..."
-                                rows={4}
-                                className="w-full px-4 py-3 rounded-xl border border-[#e5e7eb] bg-white text-gray-800 focus:outline-none focus:border-[#4f90c6] focus:ring-1 focus:ring-[#4f90c6] transition resize-none"
+                                rows={7}
                                 value={quote}
-                                onChange={(e) => setQuote(e.target.value)}
+                                onChange={(event) =>
+                                    setQuote(event.target.value)
+                                }
                                 required
+                                className="w-full resize-none border border-gray-200 bg-white px-4 py-3.5 text-sm leading-relaxed text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#4f90c6] focus:ring-2 focus:ring-[#4f90c6]/10"
                             />
                         </div>
 
-                        {/* Author Input with History Chips */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                <i className="ri-user-line text-[#355485] mr-1"></i>
-                                Nama Author
-                            </label>
-                            <input
-                                placeholder="Nama Instagram-mu (tanpa @)"
-                                type="text"
-                                className="w-full px-4 py-3 rounded-xl border border-[#e5e7eb] bg-white text-gray-800 focus:outline-none focus:border-[#4f90c6] focus:ring-1 focus:ring-[#4f90c6] transition"
-                                value={author}
-                                onChange={handleManualAuthor}
-                                required
+                        {/* Default Author Information */}
+                        {/* <div className="flex items-center justify-between border border-gray-200 bg-[#fafbfc] px-4 py-3">
+                            <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400">
+                                    Author
+                                </p>
+
+                                <p className="mt-1 text-sm font-semibold text-gray-700">
+                                    @{DEFAULT_AUTHOR}
+                                </p>
+                            </div>
+
+                            <p className="text-[10px] text-gray-400">
+                                Otomatis
+                            </p>
+                        </div> */}
+
+                        {/* Information Box */}
+                        <div className="flex items-start gap-3 border border-[#dceaf4] bg-[#f3f8fc] px-4 py-3.5">
+                            <Info
+                                size={17}
+                                strokeWidth={1.8}
+                                className="mt-0.5 shrink-0 text-[#4f90c6]"
                             />
 
-                            {/* Author History Chips */}
-                            {authorHistory.length > 0 && (
-                                <div className="mt-3">
-                                    {/* <div className="flex items-center justify-between mb-2">
-                                        <span className="text-xs text-gray-500 flex items-center gap-1">
-                                            <i className="ri-history-line"></i>
-                                            Riwayat Author
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={clearAuthorHistory}
-                                            className="text-xs text-red-500 hover:text-red-700"
-                                        >
-                                            Hapus semua
-                                        </button>
-                                    </div> */}
-                                    <div className="flex flex-wrap gap-2">
-                                        {authorHistory.map((auth, idx) => (
-                                            <button
-                                                key={idx}
-                                                type="button"
-                                                onClick={() => selectAuthorFromHistory(auth)}
-                                                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-[12px] rounded-full transition-all flex items-center gap-1"
-                                            >
-                                                <i className="ri-user-line text-xs"></i>
-                                                {auth}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                            <div>
+                                <p className="text-xs font-semibold text-[#355485]">
+                                    Proses moderasi
+                                </p>
 
-                        {/* Category Select */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                <i className="ri-price-tag-3-line text-[#355485] mr-1"></i>
-                                Kategori
-                            </label>
-                            <select
-                                className="w-full px-4 py-3 rounded-xl border border-[#e5e7eb] bg-white text-gray-800 focus:outline-none focus:border-[#4f90c6] focus:ring-1 focus:ring-[#4f90c6] transition cursor-pointer"
-                                value={category}
-                                onChange={(e) => setCategory(e.target.value)}
-                            >
-                                <option value="motivation">🔥 Motivasi</option>
-                                <option value="life">💭 Reminder</option>
-                                <option value="love">❤️ Cinta</option>
-                                <option value="funny">😂 Lucu</option>
-                                <option value="other">📌 Lainnya</option>
-                            </select>
-                        </div>
-
-                        {/* Info Box */}
-                        <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
-                            <div className="flex items-start gap-2">
-                                <i className="ri-information-line text-blue-500 text-sm mt-0.5"></i>
-                                <p className="text-xs text-blue-700">
-                                    Quote akan masuk ke antrian persetujuan admin terlebih dahulu.
-                                    Setelah disetujui, quote akan tampil di halaman QuotesKu.
+                                <p className="mt-1 text-xs leading-relaxed text-[#58738a]">
+                                    Quote yang kamu kirim akan masuk ke antrian
+                                    persetujuan admin terlebih dahulu. Setelah
+                                    disetujui, quote akan tampil di halaman
+                                    QuotesKu.
                                 </p>
                             </div>
                         </div>
@@ -309,95 +330,161 @@ const AddQuotes = () => {
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="w-full py-3 bg-gradient-to-r from-[#355485] to-[#4f90c6] text-white rounded-xl font-medium flex items-center justify-center disabled:opacity-70 hover:shadow-lg transition-all"
+                            className="flex w-full items-center justify-center gap-2 bg-[#355485] px-5 py-3.5 text-sm font-semibold text-white shadow-sm shadow-[#355485]/15 transition hover:bg-[#2a436c] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             {isLoading ? (
                                 <>
-                                    <i className="ri-loader-4-line animate-spin mr-2"></i>
+                                    <LoaderCircle
+                                        size={17}
+                                        strokeWidth={1.9}
+                                        className="animate-spin"
+                                    />
                                     Menambahkan...
                                 </>
                             ) : (
                                 <>
-                                    <i className="ri-send-plane-line mr-2"></i>
+                                    <Send
+                                        size={17}
+                                        strokeWidth={1.9}
+                                    />
                                     Kirim Quote
                                 </>
                             )}
                         </button>
                     </form>
                 </div>
-            </div>
 
-            {/* History Drawer from Bottom */}
+                {/* <p className="mt-5 text-center text-[11px] leading-relaxed text-gray-400">
+                    Quote akan dikirim menggunakan author default{" "}
+                    <span className="font-medium text-gray-500">
+                        @{DEFAULT_AUTHOR}
+                    </span>
+                    .
+                </p> */}
+            </main>
+
+            {/* History Drawer */}
             {isHistoryDrawerOpen && (
                 <>
                     {/* Overlay */}
                     <div
-                        className="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"
+                        className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px]"
                         onClick={() => setIsHistoryDrawerOpen(false)}
                     />
 
                     {/* Drawer */}
-                    <div className="fixed inset-x-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl transform transition-transform animate-slide-up max-h-[70vh] flex flex-col">
+                    <div className="fixed inset-x-0 bottom-0 z-50 flex max-h-[78vh] flex-col overflow-hidden border-t border-gray-200 bg-white shadow-2xl sm:inset-x-auto sm:left-1/2 sm:w-full sm:max-w-2xl sm:-translate-x-1/2 sm:rounded-t-2xl">
+                        {/* Drag Handle */}
+                        <div className="flex justify-center pb-1 pt-3 sm:hidden">
+                            <div className="h-1 w-9 rounded-full bg-gray-300" />
+                        </div>
+
                         {/* Drawer Header */}
-                        <div className="flex justify-between items-center p-5 border-b border-[#e5e7eb]">
-                            <div className="flex items-center gap-2">
-                                <i className="ri-history-line text-xl text-[#355485]"></i>
-                                <h3 className="text-lg font-semibold text-gray-800">History Quote</h3>
+                        <div className="flex items-center justify-between gap-4 border-b border-gray-100 px-5 py-4">
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <History
+                                        size={18}
+                                        strokeWidth={1.8}
+                                        className="text-[#355485]"
+                                    />
+
+                                    <h2 className="text-base font-semibold text-gray-900">
+                                        History Quote
+                                    </h2>
+                                </div>
+
+                                <p className="mt-1 pl-6 text-xs text-gray-400">
+                                    Pilih quote untuk mengisi form kembali
+                                </p>
                             </div>
+
                             <button
-                                onClick={() => setIsHistoryDrawerOpen(false)}
-                                className="text-gray-400 hover:text-gray-600 transition-colors"
+                                type="button"
+                                onClick={() =>
+                                    setIsHistoryDrawerOpen(false)
+                                }
+                                className="flex h-8 w-8 items-center justify-center border border-gray-200 text-gray-500 transition hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900 active:scale-95"
+                                aria-label="Tutup history"
                             >
-                                <i className="ri-close-line text-2xl"></i>
+                                <X
+                                    size={17}
+                                    strokeWidth={1.8}
+                                />
                             </button>
                         </div>
 
                         {/* Drawer Content */}
-                        <div className="flex-1 overflow-y-auto p-4">
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-5">
                             {quoteHistory.length > 0 ? (
-                                <div className="space-y-3">
+                                <div className="space-y-2.5">
                                     {quoteHistory.map((item, index) => (
-                                        <div
-                                            key={index}
-                                            className="p-4 bg-gray-50 rounded-xl border border-[#e5e7eb] cursor-pointer hover:bg-gray-100 transition-all"
-                                            onClick={() => loadHistoryItem(item)}
+                                        <button
+                                            key={`${item.timestamp}-${index}`}
+                                            type="button"
+                                            onClick={() =>
+                                                loadHistoryItem(item)
+                                            }
+                                            className="group w-full border border-gray-200 bg-white p-4 text-left transition hover:border-[#b8d2e5] hover:bg-[#f8fbfd]"
                                         >
-                                            <div className="flex justify-between items-start mb-2">
-                                                <span className="text-xs text-gray-400">
-                                                    {new Date(item.timestamp).toLocaleString('id-ID')}
-                                                </span>
-                                                <span className="text-xs px-2 py-1 rounded-full bg-white text-gray-600">
-                                                    {item.category === "motivation" ? "Motivasi" :
-                                                        item.category === "life" ? "Reminder" :
-                                                            item.category === "love" ? "Cinta" :
-                                                                item.category === "funny" ? "Lucu" : "Lainnya"}
-                                                </span>
+                                            <div className="mb-3 flex items-start justify-between gap-3">
+                                                <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                                                    <Clock3
+                                                        size={12}
+                                                        strokeWidth={1.8}
+                                                    />
+
+                                                    {new Date(
+                                                        item.timestamp
+                                                    ).toLocaleString(
+                                                        "id-ID"
+                                                    )}
+                                                </div>
                                             </div>
-                                            <p className="text-gray-700 text-sm mb-2 line-clamp-2">
-                                                "{item.text}"
+
+                                            <p className="line-clamp-3 text-sm leading-relaxed text-gray-700">
+                                                “{item.text}”
                                             </p>
-                                            <p className="text-gray-400 text-xs">
-                                                — {item.author || "Anonymous"}
-                                            </p>
-                                        </div>
+
+                                            {/* <p className="mt-3 text-xs text-gray-400">
+                                                — @{DEFAULT_AUTHOR}
+                                            </p> */}
+                                        </button>
                                     ))}
                                 </div>
                             ) : (
-                                <div className="text-center py-12">
-                                    <i className="ri-inbox-line text-5xl text-gray-300 mb-3"></i>
-                                    <p className="text-gray-400 text-sm">Belum ada history quote</p>
+                                <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+                                    <div className="mb-4 flex h-12 w-12 items-center justify-center border border-gray-200 bg-gray-50 text-gray-300">
+                                        <Inbox
+                                            size={24}
+                                            strokeWidth={1.6}
+                                        />
+                                    </div>
+
+                                    <p className="text-sm font-semibold text-gray-600">
+                                        Belum ada history quote
+                                    </p>
+
+                                    <p className="mt-1 text-xs text-gray-400">
+                                        Quote yang pernah kamu kirim akan
+                                        muncul di sini.
+                                    </p>
                                 </div>
                             )}
                         </div>
 
                         {/* Drawer Footer */}
                         {quoteHistory.length > 0 && (
-                            <div className="p-4 border-t border-[#e5e7eb]">
+                            <div className="border-t border-gray-100 p-4">
                                 <button
+                                    type="button"
                                     onClick={clearHistory}
-                                    className="w-full py-2.5 bg-red-50 text-red-600 rounded-xl text-sm font-medium hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
+                                    className="flex w-full items-center justify-center gap-2 border border-red-100 bg-red-50 px-4 py-3 text-xs font-semibold text-red-600 transition hover:bg-red-100 active:scale-[0.99]"
                                 >
-                                    <i className="ri-delete-bin-line"></i>
+                                    <Trash2
+                                        size={15}
+                                        strokeWidth={1.8}
+                                    />
                                     Hapus Semua History
                                 </button>
                             </div>

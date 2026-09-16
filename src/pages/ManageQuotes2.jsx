@@ -1,7 +1,31 @@
-// ManageQuotes.jsx
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { myQuotesCollection } from '../firebase';
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Check,
+  ChevronDown,
+  Download,
+  Edit3,
+  FileSpreadsheet,
+  FileUp,
+  History,
+  Inbox,
+  Loader2,
+  Menu,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+  UploadCloud,
+  X,
+  XCircle,
+  CheckCircle2,
+  Bookmark,
+  BookmarkCheck,
+  AlertTriangle,
+  Clock3,
+} from "lucide-react";
+
+import { myQuotesCollection } from "../firebase";
+
 import {
   getDocs,
   query,
@@ -11,188 +35,420 @@ import {
   deleteDoc,
   where,
   addDoc,
-  serverTimestamp
-} from 'firebase/firestore';
-import * as XLSX from 'xlsx';
+  serverTimestamp,
+} from "firebase/firestore";
+
+import * as XLSX from "xlsx";
+
+const DEFAULT_AUTHOR = "storythur";
 
 const ManageQuotes = () => {
-  // Quotes state
+  // =========================================================
+  // Quotes State
+  // =========================================================
+
   const [quotes, setQuotes] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [isQuotesLoading, setIsQuotesLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [editingQuote, setEditingQuote] = useState(null);
 
-  // Add quote popup state
+  // =========================================================
+  // Add Quote State
+  // =========================================================
+
   const [isAddPopupOpen, setIsAddPopupOpen] = useState(false);
-  const [newQuote, setNewQuote] = useState({ text: '', author: '' });
+  const [newQuote, setNewQuote] = useState({
+    text: "",
+  });
+
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState(null);
 
-  // Import Excel state
+  // =========================================================
+  // Import Excel State
+  // =========================================================
+
   const [isImportPopupOpen, setIsImportPopupOpen] = useState(false);
   const [importPreview, setImportPreview] = useState([]);
   const [importFile, setImportFile] = useState(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importErrors, setImportErrors] = useState([]);
 
-  // Export state
+  // =========================================================
+  // Export State
+  // =========================================================
+
   const [isExporting, setIsExporting] = useState(false);
 
-  // Delete all state
+  // =========================================================
+  // Delete All State
+  // =========================================================
+
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // History state
-  const [history, setHistory] = useState([]);
-  const [selectedAuthor, setSelectedAuthor] = useState('');
+  // =========================================================
+  // History State
+  // =========================================================
 
-  // Load history from localStorage
+  const [history, setHistory] = useState([]);
+
+  // =========================================================
+  // Load History
+  // =========================================================
+
   useEffect(() => {
-    const savedHistory = localStorage.getItem('quoteAddHistory');
-    if (savedHistory) {
-      setHistory(JSON.parse(savedHistory));
+    try {
+      const savedHistory = localStorage.getItem("quoteAddHistory");
+
+      if (savedHistory) {
+        setHistory(JSON.parse(savedHistory));
+      }
+    } catch (error) {
+      console.error("Error loading history:", error);
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('quoteAddHistory', JSON.stringify(history));
+    localStorage.setItem("quoteAddHistory", JSON.stringify(history));
   }, [history]);
 
-  // Fetch quotes from Firestore
-  useEffect(() => {
-    const fetchQuotes = async () => {
-      try {
-        let q;
-        if (statusFilter === 'all') {
-          q = query(myQuotesCollection, orderBy('createdAt', 'desc'));
-        } else {
-          q = query(
-            myQuotesCollection,
-            where('status', '==', statusFilter),
-            orderBy('createdAt', 'desc')
-          );
-        }
-        const querySnapshot = await getDocs(q);
-        const quotesData = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setQuotes(quotesData);
-      } catch (error) {
-        console.error("Error fetching quotes: ", error);
+  // =========================================================
+  // Notification
+  // =========================================================
+
+  const showNotificationMessage = (message, type = "success") => {
+    setNotification({
+      message,
+      type,
+    });
+
+    setTimeout(() => {
+      setNotification(null);
+    }, 3500);
+  };
+
+  // =========================================================
+  // Fetch Quotes
+  // =========================================================
+
+  const fetchQuotes = async () => {
+    setIsQuotesLoading(true);
+
+    try {
+      let quotesQuery;
+
+      if (statusFilter === "all") {
+        quotesQuery = query(
+          myQuotesCollection,
+          orderBy("createdAt", "desc")
+        );
+      } else {
+        quotesQuery = query(
+          myQuotesCollection,
+          where("status", "==", statusFilter),
+          orderBy("createdAt", "desc")
+        );
       }
-    };
+
+      const querySnapshot = await getDocs(quotesQuery);
+
+      const quotesData = querySnapshot.docs.map((quoteDoc) => ({
+        id: quoteDoc.id,
+        ...quoteDoc.data(),
+      }));
+
+      setQuotes(quotesData);
+    } catch (error) {
+      console.error("Error fetching quotes:", error);
+
+      showNotificationMessage(
+        "Gagal mengambil data quotes. Coba refresh kembali.",
+        "error"
+      );
+    } finally {
+      setIsQuotesLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchQuotes();
   }, [statusFilter]);
 
-  const filteredQuotes = quotes.filter(quote => {
-    const matchesSearch = searchTerm === '' ||
-      quote.text?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      quote.author?.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
-  });
+  // =========================================================
+  // Search Filter
+  // =========================================================
 
-  // Handle status change
+  const filteredQuotes = useMemo(() => {
+    const normalizedSearch = searchTerm.toLowerCase().trim();
+
+    return quotes.filter((quote) => {
+      if (!normalizedSearch) return true;
+
+      return (
+        quote.text?.toLowerCase().includes(normalizedSearch) ||
+        quote.author?.toLowerCase().includes(normalizedSearch)
+      );
+    });
+  }, [quotes, searchTerm]);
+
+  // =========================================================
+  // Status Helpers
+  // =========================================================
+
+  const getStatusLabel = (status) => {
+    const labels = {
+      pending: "Pending",
+      approved: "Approved",
+      rejected: "Rejected",
+      marked: "Marked",
+    };
+
+    return labels[status] || "Pending";
+  };
+
+  const getStatusStyle = (status) => {
+    const styles = {
+      approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      pending: "bg-amber-50 text-amber-700 border-amber-200",
+      rejected: "bg-red-50 text-red-700 border-red-200",
+      marked: "bg-blue-50 text-blue-700 border-blue-200",
+    };
+
+    return styles[status] || styles.pending;
+  };
+
+  const getStatusIcon = (status) => {
+    if (status === "approved") {
+      return <CheckCircle2 size={14} />;
+    }
+
+    if (status === "rejected") {
+      return <XCircle size={14} />;
+    }
+
+    if (status === "marked") {
+      return <BookmarkCheck size={14} />;
+    }
+
+    return <Clock3 size={14} />;
+  };
+
+  // =========================================================
+  // Update Status
+  // =========================================================
+
   const handleStatusChange = async (quoteId, newStatus) => {
     try {
       const quoteRef = doc(myQuotesCollection, quoteId);
-      await updateDoc(quoteRef, { status: newStatus, updatedAt: new Date() });
 
-      setQuotes(quotes.map(quote =>
-        quote.id === quoteId ? { ...quote, status: newStatus } : quote
-      ));
-
-      showNotificationMessage(`Status berhasil diubah menjadi ${newStatus}!`, 'success');
-    } catch (error) {
-      console.error("Error updating quote status: ", error);
-      showNotificationMessage('Gagal mengubah status', 'error');
-    }
-  };
-
-  // Handle mark toggle - Sinkron ke Firebase
-  const handleMarkToggle = async (quoteId, currentStatus) => {
-    try {
-      const newStatus = currentStatus === 'marked' ? 'approved' : 'marked';
-      const quoteRef = doc(myQuotesCollection, quoteId);
-      await updateDoc(quoteRef, { status: newStatus, updatedAt: new Date() });
-
-      setQuotes(quotes.map(quote =>
-        quote.id === quoteId ? { ...quote, status: newStatus } : quote
-      ));
-
-      showNotificationMessage(`Quote ${newStatus === 'marked' ? 'ditandai' : 'dibatalkan tandainya'}!`, 'success');
-    } catch (error) {
-      console.error("Error toggling mark: ", error);
-      showNotificationMessage('Gagal mengubah status tandai', 'error');
-    }
-  };
-
-  const handleEdit = (quote) => setEditingQuote(quote);
-
-  const handleUpdate = async (e) => {
-    e.preventDefault();
-    try {
-      const quoteRef = doc(myQuotesCollection, editingQuote.id);
       await updateDoc(quoteRef, {
-        text: editingQuote.text,
-        author: editingQuote.author,
-        updatedAt: new Date()
+        status: newStatus,
+        updatedAt: serverTimestamp(),
       });
-      setQuotes(quotes.map(quote =>
-        quote.id === editingQuote.id ? editingQuote : quote
-      ));
-      setEditingQuote(null);
-      showNotificationMessage('Quote berhasil diupdate!', 'success');
+
+      setQuotes((prevQuotes) =>
+        prevQuotes.map((quote) =>
+          quote.id === quoteId
+            ? {
+              ...quote,
+              status: newStatus,
+            }
+            : quote
+        )
+      );
+
+      showNotificationMessage(
+        `Status berhasil diubah menjadi ${getStatusLabel(newStatus)}.`,
+        "success"
+      );
     } catch (error) {
-      console.error("Error updating quote: ", error);
-      showNotificationMessage('Gagal mengupdate quote', 'error');
+      console.error("Error updating quote status:", error);
+
+      showNotificationMessage(
+        "Gagal mengubah status quote.",
+        "error"
+      );
     }
   };
+
+  // =========================================================
+  // Quick Actions
+  // =========================================================
+
+  const handleApprove = (quoteId) => {
+    handleStatusChange(quoteId, "approved");
+  };
+
+  const handleReject = (quoteId) => {
+    handleStatusChange(quoteId, "rejected");
+  };
+
+  const handleMarkToggle = async (quoteId, currentStatus) => {
+    const newStatus =
+      currentStatus === "marked" ? "approved" : "marked";
+
+    await handleStatusChange(quoteId, newStatus);
+  };
+
+  // =========================================================
+  // Edit Quote
+  // =========================================================
+
+  const handleEdit = (quote) => {
+    setEditingQuote({
+      ...quote,
+      text: quote.text || "",
+      author: quote.author || DEFAULT_AUTHOR,
+    });
+  };
+
+  const handleUpdate = async (event) => {
+    event.preventDefault();
+
+    if (!editingQuote?.text?.trim()) {
+      showNotificationMessage(
+        "Teks quote tidak boleh kosong.",
+        "error"
+      );
+
+      return;
+    }
+
+    try {
+      const quoteRef = doc(
+        myQuotesCollection,
+        editingQuote.id
+      );
+
+      await updateDoc(quoteRef, {
+        text: editingQuote.text.trim(),
+        author: editingQuote.author || DEFAULT_AUTHOR,
+        updatedAt: serverTimestamp(),
+      });
+
+      setQuotes((prevQuotes) =>
+        prevQuotes.map((quote) =>
+          quote.id === editingQuote.id
+            ? {
+              ...quote,
+              text: editingQuote.text.trim(),
+              author:
+                editingQuote.author || DEFAULT_AUTHOR,
+            }
+            : quote
+        )
+      );
+
+      setEditingQuote(null);
+
+      showNotificationMessage(
+        "Quote berhasil diupdate.",
+        "success"
+      );
+    } catch (error) {
+      console.error("Error updating quote:", error);
+
+      showNotificationMessage(
+        "Gagal mengupdate quote.",
+        "error"
+      );
+    }
+  };
+
+  // =========================================================
+  // Delete Quote
+  // =========================================================
 
   const handleDelete = async (quoteId) => {
-    if (window.confirm("Apakah Anda yakin ingin menghapus quote ini?")) {
-      try {
-        await deleteDoc(doc(myQuotesCollection, quoteId));
-        setQuotes(quotes.filter(quote => quote.id !== quoteId));
-        showNotificationMessage('Quote berhasil dihapus!', 'success');
-      } catch (error) {
-        console.error("Error deleting quote: ", error);
-        showNotificationMessage('Gagal menghapus quote', 'error');
-      }
+    const isConfirmed = window.confirm(
+      "Apakah Anda yakin ingin menghapus quote ini?"
+    );
+
+    if (!isConfirmed) return;
+
+    try {
+      await deleteDoc(doc(myQuotesCollection, quoteId));
+
+      setQuotes((prevQuotes) =>
+        prevQuotes.filter((quote) => quote.id !== quoteId)
+      );
+
+      showNotificationMessage(
+        "Quote berhasil dihapus.",
+        "success"
+      );
+    } catch (error) {
+      console.error("Error deleting quote:", error);
+
+      showNotificationMessage(
+        "Gagal menghapus quote.",
+        "error"
+      );
     }
   };
 
-  // Delete all quotes
+  // =========================================================
+  // Delete All Quotes
+  // =========================================================
+
   const handleDeleteAll = async () => {
     setIsDeletingAll(true);
+
     try {
       const querySnapshot = await getDocs(myQuotesCollection);
-      const deletePromises = querySnapshot.docs.map(doc => deleteDoc(doc.ref));
+
+      const deletePromises = querySnapshot.docs.map((quoteDoc) =>
+        deleteDoc(quoteDoc.ref)
+      );
+
       await Promise.all(deletePromises);
 
       setQuotes([]);
       setShowDeleteConfirm(false);
-      showNotificationMessage(`Berhasil menghapus semua quotes!`, 'success');
+
+      showNotificationMessage(
+        "Berhasil menghapus semua quotes.",
+        "success"
+      );
     } catch (error) {
-      console.error("Error deleting all quotes: ", error);
-      showNotificationMessage('Gagal menghapus semua quotes', 'error');
+      console.error("Error deleting all quotes:", error);
+
+      showNotificationMessage(
+        "Gagal menghapus semua quotes.",
+        "error"
+      );
     } finally {
       setIsDeletingAll(false);
     }
   };
 
-  const handleAddQuote = async (e) => {
-    e.preventDefault();
-    if (!newQuote.text.trim() || !newQuote.author.trim()) {
-      showNotificationMessage('Text dan Author harus diisi!', 'error');
+  // =========================================================
+  // Add Quote
+  // =========================================================
+
+  const handleAddQuote = async (event) => {
+    event.preventDefault();
+
+    if (!newQuote.text.trim()) {
+      showNotificationMessage(
+        "Teks quote harus diisi.",
+        "error"
+      );
+
       return;
     }
 
     setIsLoading(true);
+
     try {
+      const quoteText = newQuote.text.trim();
+
       const docRef = await addDoc(myQuotesCollection, {
-        text: newQuote.text.trim(),
-        author: newQuote.author.trim(),
+        text: quoteText,
+        author: DEFAULT_AUTHOR,
+        category: "",
         status: "approved",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -202,156 +458,259 @@ const ManageQuotes = () => {
 
       const historyEntry = {
         id: docRef.id,
-        text: newQuote.text.trim(),
-        author: newQuote.author.trim(),
-        timestamp: new Date().toISOString()
+        text: quoteText,
+        author: DEFAULT_AUTHOR,
+        timestamp: new Date().toISOString(),
       };
-      setHistory(prev => [historyEntry, ...prev].slice(0, 20));
+
+      setHistory((prevHistory) =>
+        [historyEntry, ...prevHistory].slice(0, 20)
+      );
 
       const newQuoteData = {
         id: docRef.id,
-        text: newQuote.text.trim(),
-        author: newQuote.author.trim(),
-        status: "approved"
+        text: quoteText,
+        author: DEFAULT_AUTHOR,
+        category: "",
+        status: "approved",
+        likes: 0,
+        views: 0,
       };
-      setQuotes(prev => [newQuoteData, ...prev]);
 
-      setNewQuote({ text: '', author: '' });
-      setSelectedAuthor('');
+      setQuotes((prevQuotes) => [
+        newQuoteData,
+        ...prevQuotes,
+      ]);
+
+      setNewQuote({
+        text: "",
+      });
+
       setIsAddPopupOpen(false);
-      showNotificationMessage('Quote berhasil ditambahkan!', 'success');
+
+      showNotificationMessage(
+        "Quote berhasil ditambahkan.",
+        "success"
+      );
     } catch (error) {
-      console.error("Error adding quote: ", error);
-      showNotificationMessage('Gagal menambahkan quote', 'error');
+      console.error("Error adding quote:", error);
+
+      showNotificationMessage(
+        "Gagal menambahkan quote.",
+        "error"
+      );
     } finally {
       setIsLoading(false);
     }
   };
 
+  // =========================================================
+  // Import Excel
+  // =========================================================
+
   const handleFileUpload = (file) => {
+    if (!file) return;
+
     setImportFile(file);
     setImportErrors([]);
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+
+    reader.onload = (event) => {
       try {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const data = new Uint8Array(event.target.result);
+
+        const workbook = XLSX.read(data, {
+          type: "array",
+        });
+
+        const firstSheet =
+          workbook.Sheets[workbook.SheetNames[0]];
+
         const jsonData = XLSX.utils.sheet_to_json(firstSheet);
 
-        const previewData = jsonData.map((row, index) => {
-          const quoteKey = Object.keys(row).find(key =>
-            key.toLowerCase().includes('quote') || key.toLowerCase().includes('text')
-          );
-          const authorKey = Object.keys(row).find(key =>
-            key.toLowerCase().includes('author') || key.toLowerCase().includes('penulis')
-          );
+        const previewData = jsonData
+          .map((row, index) => {
+            const quoteKey = Object.keys(row).find((key) => {
+              const normalizedKey = key.toLowerCase();
 
-          const quoteText = quoteKey ? row[quoteKey] : '';
-          const author = authorKey ? row[authorKey] : 'Anonymous';
+              return (
+                normalizedKey.includes("quote") ||
+                normalizedKey.includes("text") ||
+                normalizedKey.includes("kutipan")
+              );
+            });
 
-          return {
-            id: `preview-${index}`,
-            text: quoteText?.toString().trim() || '',
-            author: author?.toString().trim() || 'Anonymous',
-            originalRow: row,
-          };
-        }).filter(item => item.text !== '');
+            const quoteText = quoteKey ? row[quoteKey] : "";
+
+            return {
+              id: `preview-${index}`,
+              text: quoteText?.toString().trim() || "",
+              author: DEFAULT_AUTHOR,
+              originalRow: row,
+            };
+          })
+          .filter((item) => item.text !== "");
 
         setImportPreview(previewData);
+
         if (previewData.length === 0) {
-          setImportErrors(['Tidak ada quote valid yang ditemukan di file.']);
+          setImportErrors([
+            "Tidak ada quote valid yang ditemukan di file.",
+          ]);
         }
       } catch (error) {
-        console.error("Error parsing file: ", error);
-        setImportErrors(['Gagal membaca file. Pastikan format file benar.']);
+        console.error("Error parsing file:", error);
+
+        setImportErrors([
+          "Gagal membaca file. Pastikan format file benar.",
+        ]);
       }
     };
+
     reader.readAsArrayBuffer(file);
   };
 
-  // Download sample Excel
+  // =========================================================
+  // Download Sample Excel
+  // =========================================================
+
   const downloadSampleExcel = () => {
     const sampleData = [
-      { quote: "Hidup adalah perjuangan yang indah", author: "storythur" },
-      { quote: "Jangan pernah menyerah pada mimpi", author: "fatkhurrhn" },
-      { quote: "Kesuksesan dimulai dari langkah kecil", author: "motivasi_quran" }
+      {
+        quote: "Hidup adalah perjuangan yang indah",
+      },
+      {
+        quote: "Jangan pernah menyerah pada mimpi",
+      },
+      {
+        quote: "Kesuksesan dimulai dari langkah kecil",
+      },
     ];
 
-    const ws = XLSX.utils.json_to_sheet(sampleData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Quotes");
-    XLSX.writeFile(wb, "sample_quotes.xlsx");
+    const worksheet = XLSX.utils.json_to_sheet(sampleData);
+    const workbook = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(
+      workbook,
+      worksheet,
+      "Quotes"
+    );
+
+    XLSX.writeFile(workbook, "sample_quotes.xlsx");
   };
 
-  // Export quotes to Excel
+  // =========================================================
+  // Export Quotes
+  // =========================================================
+
   const handleExportQuotes = () => {
     if (filteredQuotes.length === 0) {
-      showNotificationMessage('Tidak ada quotes untuk diexport!', 'error');
+      showNotificationMessage(
+        "Tidak ada quotes untuk diexport.",
+        "error"
+      );
+
       return;
     }
 
     setIsExporting(true);
+
     try {
       const exportData = filteredQuotes.map((quote, index) => ({
-        'No': index + 1,
-        'Quote': quote.text || '',
-        'Author': quote.author || 'Anonymous',
-        'Status': quote.status || 'pending',
-        'Marked': quote.status === 'marked' ? 'Yes' : 'No',
-        'Likes': quote.likes || 0,
-        'Views': quote.views || 0,
-        'Created At': quote.createdAt?.toDate ?
-          quote.createdAt.toDate().toLocaleString() :
-          (quote.createdAt ? new Date(quote.createdAt).toLocaleString() : '')
+        No: index + 1,
+        Quote: quote.text || "",
+        Author: quote.author || DEFAULT_AUTHOR,
+        Status: quote.status || "pending",
+        Marked: quote.status === "marked" ? "Yes" : "No",
+        Likes: quote.likes || 0,
+        Views: quote.views || 0,
+        "Created At": quote.createdAt?.toDate
+          ? quote.createdAt.toDate().toLocaleString()
+          : quote.createdAt
+            ? new Date(quote.createdAt).toLocaleString()
+            : "",
       }));
 
-      const ws = XLSX.utils.json_to_sheet(exportData);
-      ws['!cols'] = [
-        { wch: 5 },   // No
-        { wch: 50 },  // Quote
-        { wch: 20 },  // Author
-        { wch: 12 },  // Status
-        { wch: 8 },   // Marked
-        { wch: 8 },   // Likes
-        { wch: 8 },   // Views
-        { wch: 22 }   // Created At
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+
+      worksheet["!cols"] = [
+        { wch: 5 },
+        { wch: 60 },
+        { wch: 20 },
+        { wch: 14 },
+        { wch: 10 },
+        { wch: 10 },
+        { wch: 10 },
+        { wch: 24 },
       ];
 
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Quotes");
+      const workbook = XLSX.utils.book_new();
+
+      XLSX.utils.book_append_sheet(
+        workbook,
+        worksheet,
+        "Quotes"
+      );
 
       const date = new Date();
-      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-      const filename = `quotes_export_${dateStr}.xlsx`;
 
-      XLSX.writeFile(wb, filename);
-      showNotificationMessage(`Berhasil export ${filteredQuotes.length} quotes!`, 'success');
+      const dateString = `${date.getFullYear()}-${String(
+        date.getMonth() + 1
+      ).padStart(2, "0")}-${String(date.getDate()).padStart(
+        2,
+        "0"
+      )}`;
+
+      XLSX.writeFile(
+        workbook,
+        `quotes_export_${dateString}.xlsx`
+      );
+
+      showNotificationMessage(
+        `Berhasil export ${filteredQuotes.length} quotes.`,
+        "success"
+      );
     } catch (error) {
-      console.error("Error exporting quotes: ", error);
-      showNotificationMessage('Gagal mengexport quotes', 'error');
+      console.error("Error exporting quotes:", error);
+
+      showNotificationMessage(
+        "Gagal mengexport quotes.",
+        "error"
+      );
     } finally {
       setIsExporting(false);
     }
   };
 
+  // =========================================================
+  // Submit Import
+  // =========================================================
+
   const handleImportSubmit = async () => {
     if (importPreview.length === 0) {
-      showNotificationMessage('Tidak ada quote valid untuk diimport', 'error');
+      showNotificationMessage(
+        "Tidak ada quote valid untuk diimport.",
+        "error"
+      );
+
       return;
     }
 
     setIsImporting(true);
+
     let successCount = 0;
     let failCount = 0;
+
     const addedQuotes = [];
+    const importedHistory = [];
 
     for (const quote of importPreview) {
       try {
         const docRef = await addDoc(myQuotesCollection, {
           text: quote.text,
-          author: quote.author,
+          author: DEFAULT_AUTHOR,
+          category: "",
           status: "approved",
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -359,269 +718,639 @@ const ManageQuotes = () => {
           views: 0,
         });
 
-        const historyEntry = {
-          id: docRef.id,
-          text: quote.text,
-          author: quote.author,
-          timestamp: new Date().toISOString(),
-          imported: true
-        };
-        setHistory(prev => [historyEntry, ...prev].slice(0, 20));
-
         addedQuotes.push({
           id: docRef.id,
           text: quote.text,
-          author: quote.author,
-          status: "approved"
+          author: DEFAULT_AUTHOR,
+          category: "",
+          status: "approved",
+          likes: 0,
+          views: 0,
+        });
+
+        importedHistory.push({
+          id: docRef.id,
+          text: quote.text,
+          author: DEFAULT_AUTHOR,
+          timestamp: new Date().toISOString(),
+          imported: true,
         });
 
         successCount++;
       } catch (error) {
-        console.error("Error adding quote: ", error);
+        console.error("Error importing quote:", error);
         failCount++;
       }
     }
 
     if (addedQuotes.length > 0) {
-      setQuotes(prev => [...addedQuotes, ...prev]);
+      setQuotes((prevQuotes) => [
+        ...addedQuotes,
+        ...prevQuotes,
+      ]);
+
+      setHistory((prevHistory) =>
+        [...importedHistory, ...prevHistory].slice(0, 20)
+      );
     }
 
-    showNotificationMessage(`Berhasil import ${successCount} quotes${failCount > 0 ? `, ${failCount} gagal` : ''}`, successCount > 0 ? 'success' : 'error');
+    showNotificationMessage(
+      `Berhasil import ${successCount} quotes${failCount > 0 ? `, ${failCount} gagal` : ""
+      }.`,
+      successCount > 0 ? "success" : "error"
+    );
 
+    closeImportPopup();
+    setIsImporting(false);
+  };
+
+  // =========================================================
+  // Close Import Popup
+  // =========================================================
+
+  const closeImportPopup = () => {
     setIsImportPopupOpen(false);
     setImportPreview([]);
     setImportFile(null);
     setImportErrors([]);
-    setIsImporting(false);
   };
 
-  const showNotificationMessage = (message, type) => {
-    setNotification({ message, type });
-    setTimeout(() => setNotification(null), 3000);
-  };
-
-  const handleAuthorSelect = (authorName) => {
-    setSelectedAuthor(authorName);
-    setNewQuote(prev => ({ ...prev, author: authorName }));
-  };
+  // =========================================================
+  // Clear History
+  // =========================================================
 
   const clearHistory = () => {
-    if (window.confirm('Hapus semua history?')) {
-      setHistory([]);
-      localStorage.removeItem('quoteAddHistory');
-      showNotificationMessage('History berhasil dihapus!', 'success');
+    const isConfirmed = window.confirm(
+      "Hapus semua history?"
+    );
+
+    if (!isConfirmed) return;
+
+    setHistory([]);
+    localStorage.removeItem("quoteAddHistory");
+
+    showNotificationMessage(
+      "History berhasil dihapus.",
+      "success"
+    );
+  };
+
+  // =========================================================
+  // Format Date
+  // =========================================================
+
+  const formatDate = (dateValue) => {
+    if (!dateValue) return "-";
+
+    try {
+      if (dateValue?.toDate) {
+        return dateValue.toDate().toLocaleDateString("id-ID", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        });
+      }
+
+      return new Date(dateValue).toLocaleDateString("id-ID", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return "-";
     }
   };
 
-  const getStatusStyle = (status) => {
-    const styles = {
-      approved: 'bg-green-100 text-green-700',
-      pending: 'bg-yellow-100 text-yellow-700',
-      rejected: 'bg-red-100 text-red-700',
-      marked: 'bg-blue-100 text-blue-700'
-    };
-    return styles[status] || styles.pending;
+  // =========================================================
+  // Desktop Skeleton
+  // =========================================================
+
+  const renderDesktopSkeleton = () => {
+    return Array.from({ length: 6 }).map((_, index) => (
+      <tr key={`desktop-skeleton-${index}`}>
+        <td className="px-5 py-5 align-top">
+          <div className="h-4 w-5 animate-pulse bg-gray-200" />
+        </td>
+
+        <td className="px-4 py-5 align-top">
+          <div className="space-y-2">
+            <div className="h-3.5 w-[90%] animate-pulse bg-gray-200" />
+            <div className="h-3.5 w-[75%] animate-pulse bg-gray-200" />
+            <div className="h-3.5 w-[45%] animate-pulse bg-gray-200" />
+
+            <div className="mt-3 h-3 w-32 animate-pulse bg-gray-100" />
+          </div>
+        </td>
+
+        <td className="px-4 py-5 align-top">
+          <div className="h-4 w-20 animate-pulse bg-gray-200" />
+        </td>
+
+        <td className="px-4 py-5 align-top">
+          <div className="h-8 w-24 animate-pulse bg-gray-200" />
+        </td>
+
+        <td className="px-4 py-5 align-top">
+          <div className="flex gap-2">
+            <div className="h-8 w-20 animate-pulse bg-gray-200" />
+            <div className="h-8 w-16 animate-pulse bg-gray-200" />
+          </div>
+        </td>
+
+        <td className="px-4 py-5 align-top">
+          <div className="flex justify-center gap-1">
+            <div className="h-8 w-8 animate-pulse bg-gray-200" />
+            <div className="h-8 w-8 animate-pulse bg-gray-200" />
+          </div>
+        </td>
+      </tr>
+    ));
   };
 
-  return (
-    <div className="min-h-screen bg-[#f9fafb] pb-16">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-[#1e3a5f] via-[#2a436c] to-[#355485] pt-6 pb-5 rounded-b-3xl shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-white mb-0.5">Manage Quotes</h1>
-              <p className="text-[#cbdde9] text-xs">Kelola semua quotes di aplikasi</p>
-            </div>
-            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                disabled={quotes.length === 0 || isDeletingAll}
-                className="flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition disabled:opacity-50 flex"
-              >
-                {isDeletingAll ? (
-                  <><i className="ri-loader-4-line animate-spin"></i> Menghapus...</>
-                ) : (
-                  <><i className="ri-delete-bin-2-line"></i> Hapus Semua</>
-                )}
-              </button>
-              <button
-                onClick={handleExportQuotes}
-                disabled={isExporting || filteredQuotes.length === 0}
-                className="flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition disabled:opacity-50 flex"
-              >
-                {isExporting ? (
-                  <><i className="ri-loader-4-line animate-spin"></i> Exporting...</>
-                ) : (
-                  <><i className="ri-download-2-line"></i> Export</>
-                )}
-              </button>
-              <button
-                onClick={() => setIsImportPopupOpen(true)}
-                className="flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-white bg-white/10 backdrop-blur-sm hover:bg-white/20 border border-white/20 transition flex"
-              >
-                <i className="ri-upload-2-line"></i>
-                Import
-              </button>
-              <button
-                onClick={() => setIsAddPopupOpen(true)}
-                className="flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-[#355485] bg-white hover:bg-gray-100 shadow-md transition flex"
-              >
-                <i className="ri-add-line"></i>
-                Tambah
-              </button>
-            </div>
+  // =========================================================
+  // Mobile Skeleton
+  // =========================================================
+
+  const renderMobileSkeleton = () => {
+    return Array.from({ length: 4 }).map((_, index) => (
+      <div
+        key={`mobile-skeleton-${index}`}
+        className="border border-[#e5eaf0] bg-white shadow-sm"
+      >
+        <div className="flex items-center justify-between border-b border-[#edf0f4] px-4 py-3">
+          <div className="flex items-center gap-2">
+            <div className="h-7 w-7 animate-pulse bg-gray-200" />
+            <div className="h-3.5 w-20 animate-pulse bg-gray-200" />
+          </div>
+
+          <div className="h-6 w-20 animate-pulse bg-gray-200" />
+        </div>
+
+        <div className="space-y-2 px-4 py-4">
+          <div className="h-3.5 w-full animate-pulse bg-gray-200" />
+          <div className="h-3.5 w-[90%] animate-pulse bg-gray-200" />
+          <div className="h-3.5 w-[65%] animate-pulse bg-gray-200" />
+
+          <div className="mt-4 h-3 w-36 animate-pulse bg-gray-100" />
+        </div>
+
+        <div className="border-t border-[#edf0f4] bg-[#fbfcfe] p-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="h-10 animate-pulse bg-gray-200" />
+            <div className="h-10 animate-pulse bg-gray-200" />
+          </div>
+
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            <div className="h-9 animate-pulse bg-gray-200" />
+            <div className="h-9 animate-pulse bg-gray-200" />
+            <div className="h-9 animate-pulse bg-gray-200" />
           </div>
         </div>
       </div>
+    ));
+  };
 
-      {/* Notification */}
-      {notification && (
-        <div className={`fixed top-20 left-4 right-4 sm:right-4 sm:left-auto z-50 px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 transition-all animate-slide-down ${notification.type === 'error' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'
-          }`}>
-          <i className={`${notification.type === 'error' ? 'ri-error-warning-line' : 'ri-checkbox-circle-line'} text-xl`}></i>
-          <span className="text-sm">{notification.message}</span>
-        </div>
-      )}
+  // =========================================================
+  // Render
+  // =========================================================
 
-      {/* Delete All Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-            <div className="p-6">
-              <div className="flex items-center justify-center mb-4">
-                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
-                  <i className="ri-delete-bin-2-line text-3xl text-red-600"></i>
+  return (
+    <div className="min-h-screen bg-[#f5f7fa] pb-10 text-[#1f2937]">
+      {/* =====================================================
+          Header
+      ===================================================== */}
+
+      <header className="border-b border-white/10 bg-[#355485]">
+        <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="mb-1 flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center bg-white/10 text-white">
+                    <Menu size={19} />
+                  </div>
+
+                  <span className="text-xs font-medium uppercase tracking-[0.18em] text-blue-100">
+                    Dashboard
+                  </span>
                 </div>
+
+                <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                  Manage Quotes
+                </h1>
+
+                <p className="mt-1 text-sm text-blue-100">
+                  Kelola, setujui, edit, dan hapus quotes dengan mudah.
+                </p>
               </div>
-              <h2 className="text-xl font-bold text-center text-gray-800 mb-2">Hapus Semua Quotes?</h2>
-              <p className="text-sm text-gray-600 text-center mb-6">
-                Anda yakin ingin menghapus semua <strong>{quotes.length}</strong> quotes?
-                <br />
-                <span className="text-red-500">Tindakan ini tidak dapat dibatalkan!</span>
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 px-4 py-2.5 border rounded-xl text-gray-700 hover:bg-gray-50 text-sm font-medium transition"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={handleDeleteAll}
-                  disabled={isDeletingAll}
-                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 text-sm font-medium transition disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isDeletingAll ? (
-                    <><i className="ri-loader-4-line animate-spin"></i> Menghapus...</>
-                  ) : (
-                    'Ya, Hapus Semua'
-                  )}
-                </button>
-              </div>
+
+              <button
+                type="button"
+                onClick={fetchQuotes}
+                className="flex h-10 w-10 shrink-0 items-center justify-center border border-white/20 bg-white/10 text-white transition hover:bg-white/20 active:scale-95"
+                title="Refresh data"
+                aria-label="Refresh data"
+              >
+                <RefreshCw
+                  size={17}
+                  className={isQuotesLoading ? "animate-spin" : ""}
+                />
+              </button>
+            </div>
+
+            {/* Header Actions */}
+
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+              <button
+                type="button"
+                onClick={() => setIsAddPopupOpen(true)}
+                className="flex min-h-10 items-center justify-center gap-2 bg-white px-3 py-2 text-sm font-semibold text-[#355485] transition hover:bg-blue-50 active:scale-[0.98]"
+              >
+                <Plus size={16} />
+                Tambah
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsImportPopupOpen(true)}
+                className="flex min-h-10 items-center justify-center gap-2 border border-white/25 bg-white/10 px-3 py-2 text-sm font-medium text-white transition hover:bg-white/20 active:scale-[0.98]"
+              >
+                <UploadCloud size={16} />
+                Import
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExportQuotes}
+                disabled={
+                  isExporting ||
+                  isQuotesLoading ||
+                  filteredQuotes.length === 0
+                }
+                className="flex min-h-10 items-center justify-center gap-2 border border-white/25 bg-white/10 px-3 py-2 text-sm font-medium text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98]"
+              >
+                {isExporting ? (
+                  <Loader2
+                    size={16}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Download size={16} />
+                )}
+
+                {isExporting ? "Export..." : "Export"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={
+                  quotes.length === 0 ||
+                  isQuotesLoading ||
+                  isDeletingAll
+                }
+                className="flex min-h-10 items-center justify-center gap-2 border border-red-300/30 bg-red-500/20 px-3 py-2 text-sm font-medium text-red-50 transition hover:bg-red-500/30 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98]"
+              >
+                {isDeletingAll ? (
+                  <Loader2
+                    size={16}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Trash2 size={16} />
+                )}
+
+                {isDeletingAll
+                  ? "Menghapus..."
+                  : "Hapus Semua"}
+              </button>
             </div>
           </div>
         </div>
+      </header>
+
+      {/* =====================================================
+          Notification
+      ===================================================== */}
+
+      {notification && (
+        <div
+          className={`fixed left-4 right-4 top-4 z-[100] flex items-start gap-3 border px-4 py-3 shadow-xl sm:left-auto sm:max-w-sm ${notification.type === "error"
+              ? "border-red-200 bg-red-50 text-red-700"
+              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+            }`}
+        >
+          {notification.type === "error" ? (
+            <AlertTriangle
+              size={18}
+              className="mt-0.5 shrink-0"
+            />
+          ) : (
+            <CheckCircle2
+              size={18}
+              className="mt-0.5 shrink-0"
+            />
+          )}
+
+          <p className="flex-1 text-sm font-medium">
+            {notification.message}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => setNotification(null)}
+            className="shrink-0 opacity-60 transition hover:opacity-100"
+            aria-label="Tutup notifikasi"
+          >
+            <X size={16} />
+          </button>
+        </div>
       )}
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4">
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-4">
-          <div className="relative flex-1">
-            <i className="ri-search-line absolute left-3 top-1/2 transform -translate-y-1/2 text-[#9ca3af] text-lg"></i>
-            <input
-              type="text"
-              placeholder="Cari quote atau author..."
-              className="w-full p-2.5 pl-10 rounded-xl border border-[#e5e7eb] bg-white text-gray-800 focus:outline-none focus:border-[#4f90c6] focus:ring-1 focus:ring-[#4f90c6] text-sm"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+      {/* =====================================================
+          Main Content
+      ===================================================== */}
+
+      <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+        {/* Search and Filter */}
+
+        <section className="mb-5 border border-[#e5eaf0] bg-white p-3 shadow-sm sm:p-4">
+          <div className="flex flex-col gap-3 lg:flex-row">
+            <div className="relative flex-1">
+              <Search
+                size={18}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9ca3af]"
+              />
+
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(event) =>
+                  setSearchTerm(event.target.value)
+                }
+                placeholder="Cari quote atau author..."
+                className="h-11 w-full border border-[#e1e6ed] bg-[#fbfcfe] pl-10 pr-4 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#4f90c6] focus:bg-white"
+              />
+            </div>
+
+            <div className="relative lg:w-52">
+              <select
+                value={statusFilter}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value)
+                }
+                className="h-11 w-full appearance-none border border-[#e1e6ed] bg-[#fbfcfe] px-3 pr-9 text-sm text-gray-700 outline-none transition focus:border-[#4f90c6] focus:bg-white"
+              >
+                <option value="all">Semua Status</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="marked">Marked</option>
+              </select>
+
+              <ChevronDown
+                size={16}
+                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+            </div>
           </div>
-          <select
-            className="w-full sm:w-auto p-2.5 rounded-xl border border-[#e5e7eb] bg-white text-gray-800 focus:outline-none focus:border-[#4f90c6] focus:ring-1 focus:ring-[#4f90c6] text-sm cursor-pointer"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="all">Semua Status</option>
-            <option value="pending">⏳ Pending</option>
-            <option value="approved">✅ Approved</option>
-            <option value="rejected">❌ Rejected</option>
-            <option value="marked">📌 Marked</option>
-          </select>
-        </div>
 
-        {/* Info Bar */}
-        <div className="flex justify-between items-center mb-4 px-1">
-          <p className="text-sm text-gray-600">
-            Menampilkan <strong>{filteredQuotes.length}</strong> dari <strong>{quotes.length}</strong> quotes
-          </p>
-        </div>
+          <div className="mt-3 flex flex-col gap-1 border-t border-[#edf0f4] pt-3 text-xs text-gray-500 sm:flex-row sm:items-center sm:justify-between">
+            <p>
+              Menampilkan{" "}
+              <strong className="text-gray-700">
+                {isQuotesLoading ? "..." : filteredQuotes.length}
+              </strong>{" "}
+              dari{" "}
+              <strong className="text-gray-700">
+                {isQuotesLoading ? "..." : quotes.length}
+              </strong>{" "}
+              quotes
+            </p>
 
-        {/* Quotes Table */}
-        <div className="bg-white rounded-xl shadow-sm border border-[#e5e7eb] overflow-hidden">
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="flex w-fit items-center gap-1 text-[#355485] hover:underline"
+              >
+                <X size={13} />
+                Reset pencarian
+              </button>
+            )}
+          </div>
+        </section>
+
+        {/* ===================================================
+            Desktop Table
+        =================================================== */}
+
+        <section className="hidden border border-[#e5eaf0] bg-white shadow-sm lg:block">
+          <div className="flex items-center justify-between border-b border-[#e5eaf0] px-5 py-4">
+            <div>
+              <h2 className="text-base font-bold text-gray-800">
+                Daftar Quotes
+              </h2>
+
+              <p className="mt-0.5 text-xs text-gray-500">
+                Kelola status dan tindakan setiap quote.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span className="h-2 w-2 bg-amber-400" />
+              Pending perlu ditinjau
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-[#e5e7eb]">
+            <table className="w-full min-w-[900px] text-left">
+              <thead className="border-b border-[#e5eaf0] bg-[#f8fafc]">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">No</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Quote</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Author</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Tandai</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                  <th className="w-14 px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                    No
+                  </th>
+
+                  <th className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                    Quote
+                  </th>
+
+                  <th className="w-36 px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                    Author
+                  </th>
+
+                  <th className="w-36 px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                    Status
+                  </th>
+
+                  <th className="w-40 px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                    Aksi Cepat
+                  </th>
+
+                  <th className="w-24 px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                    Kelola
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredQuotes.length > 0 ? (
+
+              <tbody className="divide-y divide-[#edf0f4]">
+                {isQuotesLoading ? (
+                  renderDesktopSkeleton()
+                ) : filteredQuotes.length > 0 ? (
                   filteredQuotes.map((quote, index) => (
-                    <tr key={quote.id} className="hover:bg-gray-50 transition">
-                      <td className="px-4 py-3 text-gray-600 text-sm">{index + 1}</td>
-                      <td className="px-4 py-3 text-gray-800 text-sm max-w-xs">
-                        <div className="line-clamp-2">"{quote.text}"</div>
+                    <tr
+                      key={quote.id}
+                      className={`transition hover:bg-[#fbfcfe] ${quote.status === "pending"
+                          ? "bg-amber-50/30"
+                          : ""
+                        }`}
+                    >
+                      <td className="px-5 py-4 align-top text-sm text-gray-400">
+                        {index + 1}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 text-sm">
-                        <span className="font-medium">@{quote.author || 'Anonymous'}</span>
+
+                      <td className="max-w-[440px] px-4 py-4 align-top">
+                        <p className="line-clamp-3 text-sm leading-6 text-gray-800">
+                          “{quote.text}”
+                        </p>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-gray-400">
+                          <span>{quote.likes || 0} likes</span>
+                          <span>{quote.views || 0} views</span>
+
+                          {quote.createdAt && (
+                            <span>
+                              {formatDate(quote.createdAt)}
+                            </span>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <select
-                          className={`text-xs px-2 py-1 rounded-lg border cursor-pointer ${getStatusStyle(quote.status)} border-transparent focus:outline-none focus:ring-1 focus:ring-blue-500`}
-                          value={quote.status || 'pending'}
-                          onChange={(e) => handleStatusChange(quote.id, e.target.value)}
-                        >
-                          <option value="pending">⏳ Pending</option>
-                          <option value="approved">✅ Approved</option>
-                          <option value="rejected">❌ Rejected</option>
-                          <option value="marked">📌 Marked</option>
-                        </select>
+
+                      <td className="px-4 py-4 align-top">
+                        <span className="text-sm font-medium text-gray-600">
+                          @{quote.author || DEFAULT_AUTHOR}
+                        </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => handleMarkToggle(quote.id, quote.status)}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${quote.status === 'marked'
-                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                            }`}
-                        >
-                          <i className={`${quote.status === 'marked' ? 'ri-check-double-fill' : 'ri-check-line'} text-sm`}></i>
-                          {quote.status === 'marked' ? 'Sudah' : 'Tandai'}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => handleEdit(quote)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition"
-                            title="Edit"
+
+                      <td className="px-4 py-4 align-top">
+                        <div className="relative w-fit">
+                          <select
+                            value={quote.status || "pending"}
+                            onChange={(event) =>
+                              handleStatusChange(
+                                quote.id,
+                                event.target.value
+                              )
+                            }
+                            className={`h-8 appearance-none border py-1 pl-8 pr-7 text-xs font-semibold outline-none ${getStatusStyle(
+                              quote.status
+                            )}`}
                           >
-                            <i className="ri-edit-line text-base"></i>
+                            <option value="pending">
+                              Pending
+                            </option>
+
+                            <option value="approved">
+                              Approved
+                            </option>
+
+                            <option value="rejected">
+                              Rejected
+                            </option>
+
+                            <option value="marked">
+                              Marked
+                            </option>
+                          </select>
+
+                          <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2">
+                            {getStatusIcon(quote.status)}
+                          </span>
+
+                          <ChevronDown
+                            size={13}
+                            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2"
+                          />
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4 align-top">
+                        <div className="flex flex-wrap gap-1.5">
+                          {quote.status !== "approved" && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleApprove(quote.id)
+                              }
+                              className="flex h-8 items-center gap-1.5 border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 active:scale-95"
+                              title="Setujui quote"
+                            >
+                              <Check size={14} />
+                              Setujui
+                            </button>
+                          )}
+
+                          {quote.status !== "rejected" && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleReject(quote.id)
+                              }
+                              className="flex h-8 items-center gap-1.5 border border-red-200 bg-red-50 px-2.5 text-xs font-semibold text-red-700 transition hover:bg-red-100 active:scale-95"
+                              title="Tolak quote"
+                            >
+                              <XCircle size={14} />
+                              Tolak
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleMarkToggle(
+                                quote.id,
+                                quote.status
+                              )
+                            }
+                            className={`flex h-8 items-center gap-1.5 border px-2.5 text-xs font-semibold transition active:scale-95 ${quote.status === "marked"
+                                ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                : "border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100"
+                              }`}
+                            title="Tandai quote"
+                          >
+                            {quote.status === "marked" ? (
+                              <BookmarkCheck size={14} />
+                            ) : (
+                              <Bookmark size={14} />
+                            )}
+
+                            {quote.status === "marked"
+                              ? "Ditandai"
+                              : "Tandai"}
                           </button>
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4 align-top">
+                        <div className="flex justify-center gap-1">
                           <button
-                            onClick={() => handleDelete(quote.id)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
-                            title="Hapus"
+                            type="button"
+                            onClick={() => handleEdit(quote)}
+                            className="flex h-8 w-8 items-center justify-center border border-gray-200 text-gray-500 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 active:scale-95"
+                            title="Edit quote"
+                            aria-label="Edit quote"
                           >
-                            <i className="ri-delete-bin-line text-base"></i>
+                            <Edit3 size={15} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(quote.id)}
+                            className="flex h-8 w-8 items-center justify-center border border-gray-200 text-gray-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 active:scale-95"
+                            title="Hapus quote"
+                            aria-label="Hapus quote"
+                          >
+                            <Trash2 size={15} />
                           </button>
                         </div>
                       </td>
@@ -629,12 +1358,23 @@ const ManageQuotes = () => {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="6" className="px-4 py-12 text-center text-gray-500">
-                      <i className="ri-inbox-line text-5xl text-gray-300 mb-3 block"></i>
-                      <p className="text-sm">Tidak ada quotes yang ditemukan</p>
+                    <td
+                      colSpan={6}
+                      className="px-5 py-16 text-center"
+                    >
+                      <Inbox
+                        size={42}
+                        className="mx-auto mb-3 text-gray-300"
+                      />
+
+                      <p className="text-sm font-medium text-gray-500">
+                        Tidak ada quotes yang ditemukan.
+                      </p>
+
                       <button
+                        type="button"
                         onClick={() => setIsAddPopupOpen(true)}
-                        className="mt-3 text-[#4f90c6] text-sm font-medium hover:underline"
+                        className="mt-3 text-sm font-semibold text-[#355485] hover:underline"
                       >
                         Tambah quote pertama
                       </button>
@@ -644,309 +1384,723 @@ const ManageQuotes = () => {
               </tbody>
             </table>
           </div>
-        </div>
+        </section>
 
-        {/* History Section */}
+        {/* ===================================================
+            Mobile Quote Cards
+        =================================================== */}
+
+        <section className="space-y-3 lg:hidden">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-gray-800">
+                Daftar Quotes
+              </h2>
+
+              <p className="mt-0.5 text-xs text-gray-500">
+                Tekan tombol untuk mengelola quote.
+              </p>
+            </div>
+
+            <span className="text-xs font-medium text-gray-400">
+              {isQuotesLoading
+                ? "Memuat..."
+                : `${filteredQuotes.length} item`}
+            </span>
+          </div>
+
+          {isQuotesLoading ? (
+            renderMobileSkeleton()
+          ) : filteredQuotes.length > 0 ? (
+            filteredQuotes.map((quote, index) => (
+              <article
+                key={quote.id}
+                className={`border bg-white shadow-sm ${quote.status === "pending"
+                    ? "border-amber-200"
+                    : "border-[#e5eaf0]"
+                  }`}
+              >
+                {/* Card Header */}
+
+                <div className="flex items-center justify-between gap-3 border-b border-[#edf0f4] px-4 py-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-[#f1f5f9] text-xs font-bold text-gray-500">
+                      {index + 1}
+                    </span>
+
+                    <span className="truncate text-xs font-medium text-gray-500">
+                      @{quote.author || DEFAULT_AUTHOR}
+                    </span>
+                  </div>
+
+                  <span
+                    className={`flex shrink-0 items-center gap-1.5 border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${getStatusStyle(
+                      quote.status
+                    )}`}
+                  >
+                    {getStatusIcon(quote.status)}
+                    {getStatusLabel(quote.status)}
+                  </span>
+                </div>
+
+                {/* Quote Content */}
+
+                <div className="px-4 py-4">
+                  <p className="text-[15px] leading-7 text-gray-800">
+                    “{quote.text}”
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-gray-400">
+                    <span>{quote.likes || 0} likes</span>
+                    <span>{quote.views || 0} views</span>
+
+                    {quote.createdAt && (
+                      <span>
+                        {formatDate(quote.createdAt)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Quick Actions */}
+
+                <div className="border-t border-[#edf0f4] bg-[#fbfcfe] p-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    {quote.status !== "approved" ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleApprove(quote.id)
+                        }
+                        className="flex h-10 items-center justify-center gap-2 border border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 active:scale-[0.98]"
+                      >
+                        <Check size={16} />
+                        Setujui
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleStatusChange(
+                            quote.id,
+                            "pending"
+                          )
+                        }
+                        className="flex h-10 items-center justify-center gap-2 border border-amber-200 bg-amber-50 text-xs font-bold text-amber-700 transition hover:bg-amber-100 active:scale-[0.98]"
+                      >
+                        <Clock3 size={16} />
+                        Pending
+                      </button>
+                    )}
+
+                    {quote.status !== "rejected" ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleReject(quote.id)
+                        }
+                        className="flex h-10 items-center justify-center gap-2 border border-red-200 bg-red-50 text-xs font-bold text-red-700 transition hover:bg-red-100 active:scale-[0.98]"
+                      >
+                        <XCircle size={16} />
+                        Tolak
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleApprove(quote.id)
+                        }
+                        className="flex h-10 items-center justify-center gap-2 border border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 active:scale-[0.98]"
+                      >
+                        <Check size={16} />
+                        Setujui
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleMarkToggle(
+                          quote.id,
+                          quote.status
+                        )
+                      }
+                      className={`flex h-9 items-center justify-center gap-1.5 border text-[11px] font-semibold transition active:scale-[0.98] ${quote.status === "marked"
+                          ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                          : "border-gray-200 bg-white text-gray-600 hover:bg-gray-100"
+                        }`}
+                    >
+                      {quote.status === "marked" ? (
+                        <BookmarkCheck size={14} />
+                      ) : (
+                        <Bookmark size={14} />
+                      )}
+
+                      Tandai
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleEdit(quote)}
+                      className="flex h-9 items-center justify-center gap-1.5 border border-gray-200 bg-white text-[11px] font-semibold text-gray-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 active:scale-[0.98]"
+                    >
+                      <Edit3 size={14} />
+                      Edit
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(quote.id)}
+                      className="flex h-9 items-center justify-center gap-1.5 border border-gray-200 bg-white text-[11px] font-semibold text-gray-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 active:scale-[0.98]"
+                    >
+                      <Trash2 size={14} />
+                      Hapus
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))
+          ) : (
+            <div className="border border-[#e5eaf0] bg-white px-5 py-16 text-center shadow-sm">
+              <Inbox
+                size={42}
+                className="mx-auto mb-3 text-gray-300"
+              />
+
+              <p className="text-sm font-medium text-gray-500">
+                Tidak ada quotes yang ditemukan.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setIsAddPopupOpen(true)}
+                className="mt-3 text-sm font-semibold text-[#355485] hover:underline"
+              >
+                Tambah quote pertama
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* ===================================================
+            History
+        =================================================== */}
+
         {history.length > 0 && (
-          <div className="mt-6 bg-white rounded-xl shadow-sm border border-[#e5e7eb] overflow-hidden">
-            <div className="flex justify-between items-center p-4 bg-gray-50 border-b border-[#e5e7eb]">
-              <h3 className="font-semibold text-gray-800 flex items-center gap-2 text-sm">
-                <i className="ri-history-line text-[#355485]"></i>
-                History ({history.length})
-              </h3>
-              <button onClick={clearHistory} className="text-red-500 hover:text-red-700 text-xs flex items-center gap-1 transition">
-                <i className="ri-delete-bin-line"></i>
+          <section className="mt-6 border border-[#e5eaf0] bg-white shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-[#e5eaf0] bg-[#f8fafc] px-4 py-3 sm:px-5">
+              <div className="flex items-center gap-2">
+                <History
+                  size={17}
+                  className="text-[#355485]"
+                />
+
+                <div>
+                  <h3 className="text-sm font-bold text-gray-800">
+                    History Tambahan
+                  </h3>
+
+                  <p className="text-[11px] text-gray-500">
+                    {history.length} aktivitas terakhir
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={clearHistory}
+                className="flex items-center gap-1.5 text-xs font-semibold text-red-500 transition hover:text-red-700"
+              >
+                <Trash2 size={14} />
                 Hapus
               </button>
             </div>
-            <div className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
+
+            <div className="max-h-72 divide-y divide-[#edf0f4] overflow-y-auto">
               {history.map((item) => (
-                <div key={item.id} className="p-3 hover:bg-gray-50 transition">
-                  <p className="text-gray-800 text-sm">"{item.text.substring(0, 60)}{item.text.length > 60 ? '...' : ''}"</p>
-                  <div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-500">
-                    <span><i className="ri-user-line"></i> {item.author}</span>
-                    <span><i className="ri-time-line"></i> {new Date(item.timestamp).toLocaleDateString()}</span>
-                    {item.imported && <span className="text-blue-500"><i className="ri-upload-2-line"></i> Imported</span>}
+                <div
+                  key={item.id}
+                  className="px-4 py-3 transition hover:bg-[#fbfcfe] sm:px-5"
+                >
+                  <p className="line-clamp-2 text-sm leading-6 text-gray-700">
+                    “{item.text}”
+                  </p>
+
+                  <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[11px] text-gray-400">
+                    <span>
+                      @{item.author || DEFAULT_AUTHOR}
+                    </span>
+
+                    <span>
+                      {formatDate(item.timestamp)}
+                    </span>
+
+                    {item.imported && (
+                      <span className="flex items-center gap-1 text-blue-500">
+                        <FileUp size={12} />
+                        Imported
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         )}
-      </div>
+      </main>
 
-      {/* Add Quote Popup */}
-      {isAddPopupOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="p-5">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-bold text-gray-800">Tambah Quote Baru</h2>
-                <button onClick={() => setIsAddPopupOpen(false)} className="text-gray-500 hover:text-gray-700 p-1">
-                  <i className="ri-close-line text-2xl"></i>
+      {/* =====================================================
+          Delete All Modal
+      ===================================================== */}
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-md border border-gray-200 bg-white shadow-2xl">
+            <div className="p-5 sm:p-6">
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center bg-red-50 text-red-600">
+                  <Trash2 size={21} />
+                </div>
+
+                <div>
+                  <h2 className="text-lg font-bold text-gray-800">
+                    Hapus Semua Quotes?
+                  </h2>
+
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    Tindakan ini tidak dapat dibatalkan.
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-sm leading-6 text-gray-600">
+                Anda akan menghapus{" "}
+                <strong className="text-gray-800">
+                  {quotes.length} quotes
+                </strong>{" "}
+                dari database secara permanen.
+              </p>
+
+              <div className="mt-6 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="h-11 border border-gray-200 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                >
+                  Batal
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDeleteAll}
+                  disabled={isDeletingAll}
+                  className="flex h-11 items-center justify-center gap-2 bg-red-600 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+                >
+                  {isDeletingAll && (
+                    <Loader2
+                      size={16}
+                      className="animate-spin"
+                    />
+                  )}
+
+                  {isDeletingAll
+                    ? "Menghapus..."
+                    : "Ya, Hapus Semua"}
                 </button>
               </div>
-              <form onSubmit={handleAddQuote} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Teks Quote *</label>
-                  <textarea
-                    placeholder="Tulis quote di sini..."
-                    rows={4}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#4f90c6] focus:border-transparent resize-none"
-                    value={newQuote.text}
-                    onChange={(e) => setNewQuote({ ...newQuote, text: e.target.value })}
-                    required
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
+          Add Quote Modal
+      ===================================================== */}
+
+      {isAddPopupOpen && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4 backdrop-blur-[2px]">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#e5eaf0] px-4 py-4 sm:px-5">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">
+                  Tambah Quote
+                </h2>
+
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Tambahkan quote baru ke dalam koleksi.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAddPopupOpen(false)}
+                className="flex h-9 w-9 items-center justify-center text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Tutup"
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleAddQuote}
+              className="space-y-4 p-4 sm:p-5"
+            >
+              <div>
+                <label
+                  htmlFor="newQuoteText"
+                  className="mb-2 block text-sm font-semibold text-gray-700"
+                >
+                  Teks Quote
+                </label>
+
+                <textarea
+                  id="newQuoteText"
+                  value={newQuote.text}
+                  onChange={(event) =>
+                    setNewQuote({
+                      text: event.target.value,
+                    })
+                  }
+                  placeholder="Tulis quote di sini..."
+                  rows={7}
+                  required
+                  className="w-full resize-none border border-gray-200 bg-[#fbfcfe] px-4 py-3 text-sm leading-6 text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#4f90c6] focus:bg-white"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="flex h-11 w-full items-center justify-center gap-2 bg-[#355485] text-sm font-bold text-white transition hover:bg-[#2a436c] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isLoading && (
+                  <Loader2
+                    size={17}
+                    className="animate-spin"
                   />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Author *</label>
-                  <input
-                    placeholder="Nama author"
-                    type="text"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-[#4f90c6] focus:border-transparent"
-                    value={newQuote.author}
-                    onChange={(e) => {
-                      setNewQuote({ ...newQuote, author: e.target.value });
-                      setSelectedAuthor('');
-                    }}
-                    required
-                  />
-                  <div className="flex gap-3 mt-2">
-                    <label className="flex items-center gap-1.5 cursor-pointer text-sm">
-                      <input
-                        type="radio"
-                        name="authorRadio"
-                        checked={selectedAuthor === 'storythur'}
-                        onChange={() => handleAuthorSelect('storythur')}
-                        className="w-4 h-4 text-[#355485]"
-                      />
-                      <span>storythur</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer text-sm">
-                      <input
-                        type="radio"
-                        name="authorRadio"
-                        checked={selectedAuthor === 'fatkhurrhn'}
-                        onChange={() => handleAuthorSelect('fatkhurrhn')}
-                        className="w-4 h-4 text-[#355485]"
-                      />
-                      <span>fatkhurrhn</span>
-                    </label>
-                  </div>
-                </div>
+                )}
+
+                {isLoading
+                  ? "Memproses..."
+                  : "Tambah Quote"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
+          Edit Quote Modal
+      ===================================================== */}
+
+      {editingQuote && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4 backdrop-blur-[2px]">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#e5eaf0] px-4 py-4 sm:px-5">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">
+                  Edit Quote
+                </h2>
+
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Perbarui teks quote yang dipilih.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setEditingQuote(null)}
+                className="flex h-9 w-9 items-center justify-center text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Tutup"
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleUpdate}
+              className="space-y-4 p-4 sm:p-5"
+            >
+              <div>
+                <label
+                  htmlFor="editingQuoteText"
+                  className="mb-2 block text-sm font-semibold text-gray-700"
+                >
+                  Teks Quote
+                </label>
+
+                <textarea
+                  id="editingQuoteText"
+                  value={editingQuote.text}
+                  onChange={(event) =>
+                    setEditingQuote({
+                      ...editingQuote,
+                      text: event.target.value,
+                    })
+                  }
+                  rows={7}
+                  required
+                  className="w-full resize-none border border-gray-200 bg-[#fbfcfe] px-4 py-3 text-sm leading-6 text-gray-800 outline-none transition focus:border-[#4f90c6] focus:bg-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEditingQuote(null)}
+                  className="h-11 border border-gray-200 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                >
+                  Batal
+                </button>
+
                 <button
                   type="submit"
-                  disabled={isLoading}
-                  className="w-full py-3 bg-[#355485] text-white rounded-xl font-medium flex items-center justify-center disabled:opacity-70 hover:bg-[#2a436c] transition"
+                  className="flex h-11 items-center justify-center gap-2 bg-[#355485] text-sm font-bold text-white transition hover:bg-[#2a436c]"
                 >
-                  {isLoading ? (
-                    <><i className="ri-loader-4-line animate-spin mr-2"></i>Memproses...</>
-                  ) : (
-                    'Tambah Quote'
-                  )}
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Quote Modal */}
-      {editingQuote && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-            <div className="p-5">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-bold text-gray-800">Edit Quote</h2>
-                <button onClick={() => setEditingQuote(null)} className="text-gray-500 hover:text-gray-700 p-1">
-                  <i className="ri-close-line text-2xl"></i>
+                  <Check size={17} />
+                  Simpan
                 </button>
               </div>
-              <form onSubmit={handleUpdate} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Teks Quote *</label>
-                  <textarea
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#4f90c6] focus:border-transparent resize-none"
-                    rows={4}
-                    value={editingQuote.text}
-                    onChange={(e) => setEditingQuote({ ...editingQuote, text: e.target.value })}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Author *</label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#4f90c6] focus:border-transparent"
-                    value={editingQuote.author}
-                    onChange={(e) => setEditingQuote({ ...editingQuote, author: e.target.value })}
-                    required
-                  />
-                </div>
-                <div className="flex justify-end gap-3 pt-2">
-                  <button type="button" onClick={() => setEditingQuote(null)} className="px-4 py-2 border rounded-xl text-gray-700 hover:bg-gray-50 text-sm">Batal</button>
-                  <button type="submit" className="px-4 py-2 bg-[#355485] text-white rounded-xl hover:bg-[#2a436c] text-sm">Simpan</button>
-                </div>
-              </form>
-            </div>
+            </form>
           </div>
         </div>
       )}
 
-      {/* Import Excel Popup */}
+      {/* =====================================================
+          Import Excel Modal
+      ===================================================== */}
+
       {isImportPopupOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-5">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-bold text-gray-800">Import Quotes dari Excel</h2>
-                <button onClick={() => {
-                  setIsImportPopupOpen(false);
-                  setImportPreview([]);
-                  setImportFile(null);
-                  setImportErrors([]);
-                }} className="text-gray-500 hover:text-gray-700 p-1">
-                  <i className="ri-close-line text-2xl"></i>
-                </button>
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4 backdrop-blur-[2px]">
+          <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#e5eaf0] px-4 py-4 sm:px-5">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">
+                  Import Quotes
+                </h2>
+
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Masukkan quotes dari file Excel atau CSV.
+                </p>
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Upload File (Excel/CSV)
+              <button
+                type="button"
+                onClick={closeImportPopup}
+                className="flex h-9 w-9 items-center justify-center text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Tutup"
+              >
+                <X size={19} />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-4 sm:p-5">
+              {/* Upload Area */}
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-gray-700">
+                  Upload File
                 </label>
-                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-[#4f90c6] transition">
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    onChange={(e) => {
-                      if (e.target.files[0]) {
-                        handleFileUpload(e.target.files[0]);
-                      }
-                    }}
-                    className="hidden"
-                    id="fileUpload"
+
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  id="quoteFileUpload"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+
+                    if (file) {
+                      handleFileUpload(file);
+                    }
+                  }}
+                />
+
+                <label
+                  htmlFor="quoteFileUpload"
+                  className="flex cursor-pointer flex-col items-center justify-center border-2 border-dashed border-gray-200 bg-[#fbfcfe] px-4 py-8 text-center transition hover:border-[#4f90c6] hover:bg-blue-50/30"
+                >
+                  <UploadCloud
+                    size={32}
+                    className="mb-2 text-gray-400"
                   />
-                  <label htmlFor="fileUpload" className="cursor-pointer block">
-                    <i className="ri-upload-cloud-2-line text-4xl text-gray-400 mb-2 block"></i>
-                    <p className="text-gray-600 text-sm">Klik untuk upload</p>
-                    <p className="text-xs text-gray-400 mt-1">Support .xlsx, .xls, .csv</p>
-                  </label>
-                </div>
+
+                  <span className="text-sm font-semibold text-gray-600">
+                    Klik untuk memilih file
+                  </span>
+
+                  <span className="mt-1 text-xs text-gray-400">
+                    Mendukung .xlsx, .xls, dan .csv
+                  </span>
+                </label>
+
                 {importFile && (
-                  <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
-                    <i className="ri-file-excel-line"></i>
-                    <span>{importFile.name}</span>
+                  <div className="mt-2 flex items-center gap-2 border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                    <FileSpreadsheet size={15} />
+
+                    <span className="truncate">
+                      {importFile.name}
+                    </span>
                   </div>
                 )}
               </div>
 
+              {/* Sample Button */}
+
               <button
+                type="button"
                 onClick={downloadSampleExcel}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 transition border border-blue-200 mb-4"
+                className="flex h-10 w-full items-center justify-center gap-2 border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
               >
-                <i className="ri-download-line"></i>
+                <Download size={16} />
                 Download Sample Excel
               </button>
 
+              {/* Import Errors */}
+
               {importErrors.length > 0 && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <h3 className="text-red-800 font-medium mb-1 text-sm">Error:</h3>
-                  <ul className="list-disc list-inside text-sm text-red-600">
-                    {importErrors.map((error, idx) => (
-                      <li key={idx}>{error}</li>
+                <div className="border border-red-200 bg-red-50 p-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
+                    <AlertTriangle size={16} />
+                    Terjadi masalah
+                  </div>
+
+                  <ul className="mt-2 list-inside list-disc text-xs leading-5 text-red-600">
+                    {importErrors.map((error, index) => (
+                      <li key={index}>{error}</li>
                     ))}
                   </ul>
                 </div>
               )}
 
+              {/* Preview */}
+
               {importPreview.length > 0 && (
-                <>
-                  <div className="mb-3">
-                    <h3 className="font-medium text-gray-800 text-sm mb-1">
-                      Preview ({importPreview.length} quotes ditemukan)
-                    </h3>
-                    <p className="text-xs text-gray-500">File akan diimport dengan status "Approved"</p>
+                <div>
+                  <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-gray-800">
+                        Preview Data
+                      </h3>
+
+                      <p className="text-xs text-gray-500">
+                        {importPreview.length} quotes ditemukan.
+                      </p>
+                    </div>
+
+                    <span className="text-xs font-medium text-emerald-600">
+                      Status: Approved
+                    </span>
                   </div>
 
-                  <div className="overflow-x-auto mb-4 max-h-64 overflow-y-auto border border-gray-200 rounded-xl">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50 sticky top-0">
+                  <div className="max-h-72 overflow-auto border border-gray-200">
+                    <table className="w-full min-w-[500px] text-left">
+                      <thead className="sticky top-0 border-b border-gray-200 bg-gray-50">
                         <tr>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">No</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quote</th>
-                          <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Author</th>
+                          <th className="w-12 px-3 py-2 text-[11px] font-bold uppercase text-gray-500">
+                            No
+                          </th>
+
+                          <th className="px-3 py-2 text-[11px] font-bold uppercase text-gray-500">
+                            Quote
+                          </th>
+
+                          <th className="w-36 px-3 py-2 text-[11px] font-bold uppercase text-gray-500">
+                            Author
+                          </th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {importPreview.map((quote, idx) => (
-                          <tr key={quote.id} className="hover:bg-gray-50">
-                            <td className="px-3 py-2 text-sm text-gray-600">{idx + 1}</td>
-                            <td className="px-3 py-2 text-sm text-gray-800 max-w-xs">
-                              <div className="line-clamp-2">"{quote.text}"</div>
+
+                      <tbody className="divide-y divide-gray-100">
+                        {importPreview.map((quote, index) => (
+                          <tr key={quote.id}>
+                            <td className="px-3 py-3 text-xs text-gray-400">
+                              {index + 1}
                             </td>
-                            <td className="px-3 py-2 text-sm text-gray-600">{quote.author}</td>
+
+                            <td className="px-3 py-3">
+                              <p className="line-clamp-2 text-xs leading-5 text-gray-700">
+                                “{quote.text}”
+                              </p>
+                            </td>
+
+                            <td className="px-3 py-3 text-xs text-gray-500">
+                              @{DEFAULT_AUTHOR}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row justify-end gap-2">
+                  <div className="mt-4 grid grid-cols-2 gap-2">
                     <button
-                      onClick={() => {
-                        setIsImportPopupOpen(false);
-                        setImportPreview([]);
-                        setImportFile(null);
-                      }}
-                      className="px-4 py-2 border rounded-xl text-gray-700 hover:bg-gray-50 text-sm"
+                      type="button"
+                      onClick={closeImportPopup}
+                      className="h-11 border border-gray-200 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
                     >
                       Batal
                     </button>
+
                     <button
+                      type="button"
                       onClick={handleImportSubmit}
                       disabled={isImporting}
-                      className="px-4 py-2 bg-[#355485] text-white rounded-xl hover:bg-[#2a436c] disabled:opacity-70 flex items-center justify-center gap-2 text-sm"
+                      className="flex h-11 items-center justify-center gap-2 bg-[#355485] text-sm font-bold text-white transition hover:bg-[#2a436c] disabled:opacity-60"
                     >
                       {isImporting ? (
-                        <>
-                          <i className="ri-loader-4-line animate-spin"></i>
-                          Importing...
-                        </>
+                        <Loader2
+                          size={16}
+                          className="animate-spin"
+                        />
                       ) : (
-                        <>
-                          <i className="ri-database-2-line"></i>
-                          Import {importPreview.length} Quotes
-                        </>
+                        <FileUp size={16} />
                       )}
+
+                      {isImporting
+                        ? "Import..."
+                        : `Import ${importPreview.length}`}
                     </button>
                   </div>
-                </>
+                </div>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {/* CSS */}
-      <style jsx>{`
-        @keyframes slide-down {
-          from {
-            transform: translateY(-20px);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
-        }
-        .animate-slide-down {
-          animation: slide-down 0.3s ease-out;
-        }
+      {/* =====================================================
+          Custom CSS
+      ===================================================== */}
+
+      <style>{`
         .line-clamp-2 {
           display: -webkit-box;
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
+        }
+
+        .line-clamp-3 {
+          display: -webkit-box;
+          -webkit-line-clamp: 3;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
+        input[type="search"]::-webkit-search-cancel-button {
+          cursor: pointer;
+        }
+
+        @media (max-width: 640px) {
+          input,
+          textarea,
+          select,
+          button {
+            -webkit-tap-highlight-color: transparent;
+          }
         }
       `}</style>
     </div>

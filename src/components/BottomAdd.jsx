@@ -1,16 +1,19 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { Plus } from "lucide-react";
 
 export default function BottomAdd() {
     const navigate = useNavigate();
 
     return (
         <button
+            type="button"
             onClick={() => navigate("/add")}
-            className="fixed bottom-[20px] right-6 w-9 h-9 rounded-full bg-[#355485] shadow-lg flex items-center justify-center text-white text-[20px] hover:bg-[#2a436c] transition z-50"
+            className="fixed bottom-5 left-5 z-50 flex h-10 w-10 items-center justify-center bg-[#355485] text-white shadow-lg shadow-[#355485]/20 transition hover:bg-[#2a436c] active:scale-95 sm:bottom-6 sm:right-6"
             title="Tambah Quote"
+            aria-label="Tambah Quote"
         >
-            <i className="ri-add-line"></i>
+            <Plus size={20} strokeWidth={2} />
         </button>
     );
 }

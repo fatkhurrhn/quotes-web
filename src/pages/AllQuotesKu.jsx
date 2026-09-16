@@ -1,4 +1,16 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
+import {
+  Search,
+  X,
+  Check,
+  CheckCircle2,
+  Film,
+  Image as ImageIcon,
+  Heart,
+  Send,
+  Inbox,
+  Shuffle,
+} from "lucide-react";
 import {
   myQuotesCollection,
   usedBackgroundsCollection,
@@ -19,6 +31,7 @@ import BottomAdd from "../components/BottomAdd";
 import PreviewModal from "../components/PreviewModal";
 
 /* ---------- Konfigurasi Background ---------- */
+
 const BG_START = 21;
 const BG_END = 60;
 const BG_FOLDER = "/background";
@@ -30,12 +43,23 @@ const ALL_BACKGROUNDS = Array.from(
 );
 
 /* ---------- Helpers ---------- */
+
 const highlightText = (text, highlight) => {
   if (!highlight.trim()) return text;
-  const regex = new RegExp(`(${highlight})`, "gi");
-  return text.split(regex).map((part, i) =>
+
+  const escapedHighlight = highlight.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    "\\$&"
+  );
+
+  const regex = new RegExp(`(${escapedHighlight})`, "gi");
+
+  return text.split(regex).map((part, index) =>
     part.toLowerCase() === highlight.toLowerCase() ? (
-      <mark key={i} className="bg-yellow-200 px-1 rounded">
+      <mark
+        key={index}
+        className="rounded bg-yellow-200 px-0.5 text-gray-900"
+      >
         {part}
       </mark>
     ) : (
@@ -44,40 +68,15 @@ const highlightText = (text, highlight) => {
   );
 };
 
-const getRelativeTime = (timestamp) => {
-  if (!timestamp) return "";
-  let date;
-  if (timestamp?.toDate) date = timestamp.toDate();
-  else if (timestamp?.seconds) date = new Date(timestamp.seconds * 1000);
-  else date = new Date(timestamp);
-
-  const now = new Date();
-  const diffMs = now - date;
-  const diffSecs = Math.floor(diffMs / 1000);
-  const diffMins = Math.floor(diffSecs / 60);
-  const diffHours = Math.floor(diffMins / 60);
-  const diffDays = Math.floor(diffHours / 24);
-  const diffWeeks = Math.floor(diffDays / 7);
-  const diffMonths = Math.floor(diffDays / 30);
-  const diffYears = Math.floor(diffDays / 365);
-
-  if (diffYears > 0) return `${diffYears} thn lalu`;
-  if (diffMonths > 0) return `${diffMonths} bln lalu`;
-  if (diffWeeks > 0) return `${diffWeeks} mgg lalu`;
-  if (diffDays > 0) return `${diffDays} hr lalu`;
-  if (diffHours > 0) return `${diffHours} jam lalu`;
-  if (diffMins > 0) return `${diffMins} mnt lalu`;
-  if (diffSecs > 10) return `${diffSecs} dtk lalu`;
-  return "baru saja";
-};
-
 function wrapText(ctx, text, maxWidth) {
   const words = text.split(" ");
   let line = "";
   const lines = [];
+
   for (let n = 0; n < words.length; n++) {
     const testLine = line + words[n] + " ";
     const metrics = ctx.measureText(testLine);
+
     if (metrics.width > maxWidth && n > 0) {
       lines.push(line.trim());
       line = words[n] + " ";
@@ -85,17 +84,19 @@ function wrapText(ctx, text, maxWidth) {
       line = testLine;
     }
   }
+
   lines.push(line.trim());
   return lines;
 }
 
 /* ---------- Background Firestore ---------- */
+
 async function getUsedBackgrounds() {
   try {
-    const snap = await getDocs(usedBackgroundsCollection);
-    return snap.docs.map((d) => d.data().path);
-  } catch (err) {
-    console.error("Error get used backgrounds:", err);
+    const snapshot = await getDocs(usedBackgroundsCollection);
+    return snapshot.docs.map((item) => item.data().path);
+  } catch (error) {
+    console.error("Error get used backgrounds:", error);
     return [];
   }
 }
@@ -107,43 +108,61 @@ async function markBackgroundAsUsed(path, quoteId) {
       quoteId,
       usedAt: serverTimestamp(),
     });
-  } catch (err) {
-    console.error("Error mark bg used:", err);
+  } catch (error) {
+    console.error("Error mark bg used:", error);
   }
 }
 
 async function releaseBackground(path) {
   try {
-    const snap = await getDocs(usedBackgroundsCollection);
-    const found = snap.docs.find((d) => d.data().path === path);
-    if (found) await deleteDoc(found.ref);
-  } catch (err) {
-    console.error("Error release bg:", err);
+    const snapshot = await getDocs(usedBackgroundsCollection);
+    const found = snapshot.docs.find(
+      (item) => item.data().path === path
+    );
+
+    if (found) {
+      await deleteDoc(found.ref);
+    }
+  } catch (error) {
+    console.error("Error release bg:", error);
   }
 }
 
 async function getRandomUnusedBackground() {
-  const used = await getUsedBackgrounds();
-  let available = ALL_BACKGROUNDS.filter((bg) => !used.includes(bg));
-  if (available.length === 0) {
-    console.warn("Semua bg terpakai. Reset otomatis.");
-    available = [...ALL_BACKGROUNDS];
+  const usedBackgrounds = await getUsedBackgrounds();
+
+  let availableBackgrounds = ALL_BACKGROUNDS.filter(
+    (background) => !usedBackgrounds.includes(background)
+  );
+
+  if (availableBackgrounds.length === 0) {
+    console.warn("Semua background terpakai. Reset otomatis.");
+    availableBackgrounds = [...ALL_BACKGROUNDS];
   }
-  const randomIndex = Math.floor(Math.random() * available.length);
-  return available[randomIndex];
+
+  const randomIndex = Math.floor(
+    Math.random() * availableBackgrounds.length
+  );
+
+  return availableBackgrounds[randomIndex];
 }
 
-/* ---------- Generate Feed (1080x1080) ---------- */
-const generateFeedImage = async (quote, bgPath = "/img/bg-storythur.png") => {
+/* ---------- Generate Feed 1080x1080 ---------- */
+
+const generateFeedImage = async (
+  quote,
+  bgPath = "/img/bg-storythur.png"
+) => {
   return new Promise((resolve) => {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
+
     canvas.width = 1080;
     canvas.height = 1080;
 
-    const bgImage = new Image();
-    bgImage.crossOrigin = "Anonymous";
-    bgImage.src = bgPath;
+    const backgroundImage = new Image();
+    backgroundImage.crossOrigin = "Anonymous";
+    backgroundImage.src = bgPath;
 
     const drawContent = () => {
       ctx.fillStyle = "#000000";
@@ -151,23 +170,36 @@ const generateFeedImage = async (quote, bgPath = "/img/bg-storythur.png") => {
       ctx.textBaseline = "middle";
       ctx.font = "52px Arial";
 
-      const wrapped = wrapText(ctx, quote, 900);
+      const wrappedText = wrapText(ctx, quote, 900);
       const lineHeight = 70;
-      const totalTextHeight = wrapped.length * lineHeight;
-      const startY = (canvas.height - totalTextHeight) / 2 + lineHeight / 2;
+      const totalTextHeight = wrappedText.length * lineHeight;
+      const startY =
+        (canvas.height - totalTextHeight) / 2 + lineHeight / 2;
 
-      wrapped.forEach((line, i) => {
-        ctx.fillText(line, canvas.width / 2, startY + i * lineHeight);
+      wrappedText.forEach((line, index) => {
+        ctx.fillText(
+          line,
+          canvas.width / 2,
+          startY + index * lineHeight
+        );
       });
 
       resolve(canvas.toDataURL("image/png"));
     };
 
-    bgImage.onload = () => {
-      ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+    backgroundImage.onload = () => {
+      ctx.drawImage(
+        backgroundImage,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
       drawContent();
     };
-    bgImage.onerror = () => {
+
+    backgroundImage.onerror = () => {
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       drawContent();
@@ -175,17 +207,19 @@ const generateFeedImage = async (quote, bgPath = "/img/bg-storythur.png") => {
   });
 };
 
-/* ---------- Generate Reels (1080x1920) — teks putih + outline hitam ---------- */
+/* ---------- Generate Reels 1080x1920 ---------- */
+
 const generateReelsImage = async (quote, bgPath) => {
   return new Promise((resolve) => {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
+
     canvas.width = 1080;
     canvas.height = 1920;
 
-    const bgImage = new Image();
-    bgImage.crossOrigin = "Anonymous";
-    bgImage.src = bgPath;
+    const backgroundImage = new Image();
+    backgroundImage.crossOrigin = "Anonymous";
+    backgroundImage.src = bgPath;
 
     const drawContent = () => {
       ctx.font = "52px Arial";
@@ -196,13 +230,15 @@ const generateReelsImage = async (quote, bgPath) => {
       ctx.lineWidth = 8;
       ctx.lineJoin = "round";
 
-      const wrapped = wrapText(ctx, quote, 650);
+      const wrappedText = wrapText(ctx, quote, 650);
       const lineHeight = 65;
-      const totalTextHeight = wrapped.length * lineHeight;
-      const startY = (canvas.height - totalTextHeight) / 2 + lineHeight / 2;
+      const totalTextHeight = wrappedText.length * lineHeight;
+      const startY =
+        (canvas.height - totalTextHeight) / 2 + lineHeight / 2;
 
-      wrapped.forEach((line, i) => {
-        const y = startY + i * lineHeight;
+      wrappedText.forEach((line, index) => {
+        const y = startY + index * lineHeight;
+
         ctx.strokeText(line, canvas.width / 2, y);
         ctx.fillText(line, canvas.width / 2, y);
       });
@@ -210,11 +246,19 @@ const generateReelsImage = async (quote, bgPath) => {
       resolve(canvas.toDataURL("image/png"));
     };
 
-    bgImage.onload = () => {
-      ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+    backgroundImage.onload = () => {
+      ctx.drawImage(
+        backgroundImage,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
       drawContent();
     };
-    bgImage.onerror = () => {
+
+    backgroundImage.onerror = () => {
       ctx.fillStyle = "#1a1a2e";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       drawContent();
@@ -222,13 +266,24 @@ const generateReelsImage = async (quote, bgPath) => {
   });
 };
 
-/* ---------- Helper: share or download ---------- */
+/* ---------- Share or Download ---------- */
+
 async function shareOrDownload(dataUrl, filename, title, text) {
   const blob = await (await fetch(dataUrl)).blob();
-  const file = new File([blob], filename, { type: "image/png" });
+  const file = new File([blob], filename, {
+    type: "image/png",
+  });
 
-  if (navigator.share && navigator.canShare({ files: [file] })) {
-    await navigator.share({ files: [file], title, text });
+  if (
+    navigator.share &&
+    navigator.canShare &&
+    navigator.canShare({ files: [file] })
+  ) {
+    await navigator.share({
+      files: [file],
+      title,
+      text,
+    });
   } else {
     const link = document.createElement("a");
     link.href = dataUrl;
@@ -237,42 +292,44 @@ async function shareOrDownload(dataUrl, filename, title, text) {
   }
 }
 
-/* ---------- Helper: copy text ---------- */
+/* ---------- Copy Text ---------- */
+
 async function copyToClipboard(text) {
   try {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text);
       return true;
     }
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.left = "-9999px";
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-    return true;
-  } catch (err) {
-    console.error("Copy failed:", err);
+
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "0";
+
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    const success = document.execCommand("copy");
+    document.body.removeChild(textarea);
+
+    return success;
+  } catch (error) {
+    console.error("Copy failed:", error);
     return false;
   }
 }
 
 /* ---------- Main Component ---------- */
+
 export default function QuotesKu() {
   const [allQuotes, setAllQuotes] = useState([]);
   const [filteredQuotes, setFilteredQuotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [quoteStates, setQuoteStates] = useState({});
-  const [copiedId, setCopiedId] = useState(null);
 
-  // Search visibility (auto hide on scroll)
-  const [showSearch, setShowSearch] = useState(true);
-  const lastScrollY = useRef(0);
-
-  // Modal
   const [modalOpen, setModalOpen] = useState(false);
   const [modalType, setModalType] = useState(null);
   const [modalQuote, setModalQuote] = useState(null);
@@ -280,132 +337,183 @@ export default function QuotesKu() {
   const [modalLoading, setModalLoading] = useState(false);
   const [modalSharing, setModalSharing] = useState(false);
 
-  /* ---------- Scroll listener: hide search on scroll down ---------- */
-  useEffect(() => {
-    const onScroll = () => {
-      const currentY = window.scrollY;
-      // Kalau scroll ke atas (currentY < lastScrollY) & sudah lewat 100px → tampilkan
-      // Kalau scroll ke bawah & sudah lewat 100px → sembunyikan
-      if (currentY > lastScrollY.current && currentY > 100) {
-        setShowSearch(false);
-      } else if (currentY < lastScrollY.current) {
-        setShowSearch(true);
-      }
-      lastScrollY.current = currentY;
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
   /* ---------- Like ---------- */
-  const handleLike = async (id, currentLikes, currentLikeStatus) => {
-    setQuoteStates((prev) => ({
-      ...prev,
+
+  const handleLike = async (
+    id,
+    currentLikes,
+    currentLikeStatus
+  ) => {
+    const nextLikeStatus = !currentLikeStatus;
+    const nextLikesCount = currentLikeStatus
+      ? Math.max(0, currentLikes - 1)
+      : currentLikes + 1;
+
+    setQuoteStates((previous) => ({
+      ...previous,
       [id]: {
-        ...prev[id],
+        ...previous[id],
+        isLiked: nextLikeStatus,
         isLiking: true,
-        isLiked: !currentLikeStatus,
-        likesCount: currentLikeStatus ? currentLikes - 1 : currentLikes + 1,
+        likesCount: nextLikesCount,
       },
     }));
+
     try {
-      const ref = doc(myQuotesCollection, id);
-      await updateDoc(ref, { likes: increment(currentLikeStatus ? -1 : 1) });
-    } catch (err) {
-      console.error("Error like:", err);
-      setQuoteStates((prev) => ({
-        ...prev,
+      const quoteRef = doc(myQuotesCollection, id);
+
+      await updateDoc(quoteRef, {
+        likes: increment(currentLikeStatus ? -1 : 1),
+      });
+    } catch (error) {
+      console.error("Error like:", error);
+
+      setQuoteStates((previous) => ({
+        ...previous,
         [id]: {
-          ...prev[id],
+          ...previous[id],
           isLiked: currentLikeStatus,
           likesCount: currentLikes,
         },
       }));
     } finally {
-      setQuoteStates((prev) => ({
-        ...prev,
-        [id]: { ...prev[id], isLiking: false },
+      setQuoteStates((previous) => ({
+        ...previous,
+        [id]: {
+          ...previous[id],
+          isLiking: false,
+        },
       }));
     }
   };
 
-  /* ---------- Copy text dari card ---------- */
-  const handleCopyFromCard = async (q) => {
-    const ok = await copyToClipboard(q.text);
-    if (ok) {
-      setCopiedId(q.id);
-      setTimeout(() => setCopiedId(null), 1500);
-    } else {
-      alert("Gagal menyalin teks");
+  /* ---------- Share From Card ---------- */
+
+  const handleShareFromCard = async (quote) => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Quote",
+          text: quote.text,
+        });
+      } else {
+        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(quote.text)}`;
+        window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+      }
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        console.error("Error sharing quote:", error);
+        alert("Gagal membagikan quote");
+      }
     }
   };
 
-  /* ---------- Buka Modal Reels ---------- */
-  const openReelsModal = async (q) => {
-    setModalQuote(q);
+  /* ---------- Open Reels Modal ---------- */
+
+  const openReelsModal = async (quote) => {
+    setModalQuote(quote);
     setModalType("reels");
     setModalOpen(true);
     setModalLoading(true);
     setModalImage(null);
 
     try {
-      let bgPath = q.reelsBg;
-      if (!bgPath) {
-        bgPath = await getRandomUnusedBackground();
-        const ref = doc(myQuotesCollection, q.id);
-        await updateDoc(ref, { reelsBg: bgPath });
-        const updateFn = (prev) =>
-          prev.map((x) => (x.id === q.id ? { ...x, reelsBg: bgPath } : x));
-        setAllQuotes(updateFn);
-        setFilteredQuotes(updateFn);
-        setModalQuote((prev) => ({ ...prev, reelsBg: bgPath }));
+      let backgroundPath = quote.reelsBg;
+
+      if (!backgroundPath) {
+        backgroundPath = await getRandomUnusedBackground();
+
+        const quoteRef = doc(myQuotesCollection, quote.id);
+
+        await updateDoc(quoteRef, {
+          reelsBg: backgroundPath,
+        });
+
+        const updateQuotes = (previous) =>
+          previous.map((item) =>
+            item.id === quote.id
+              ? {
+                ...item,
+                reelsBg: backgroundPath,
+              }
+              : item
+          );
+
+        setAllQuotes(updateQuotes);
+        setFilteredQuotes(updateQuotes);
+
+        setModalQuote((previous) => ({
+          ...previous,
+          reelsBg: backgroundPath,
+        }));
       }
-      const dataUrl = await generateReelsImage(q.text, bgPath);
-      setModalImage(dataUrl);
-    } catch (err) {
-      console.error("Error generate reels:", err);
+
+      const imageDataUrl = await generateReelsImage(
+        quote.text,
+        backgroundPath
+      );
+
+      setModalImage(imageDataUrl);
+    } catch (error) {
+      console.error("Error generate reels:", error);
     } finally {
       setModalLoading(false);
     }
   };
 
-  /* ---------- Buka Modal Feed ---------- */
-  const openFeedModal = async (q) => {
-    setModalQuote(q);
+  /* ---------- Open Feed Modal ---------- */
+
+  const openFeedModal = async (quote) => {
+    setModalQuote(quote);
     setModalType("feed");
     setModalOpen(true);
     setModalLoading(true);
     setModalImage(null);
 
     try {
-      const dataUrl = await generateFeedImage(q.text);
-      setModalImage(dataUrl);
-    } catch (err) {
-      console.error("Error generate feed:", err);
+      const imageDataUrl = await generateFeedImage(quote.text);
+      setModalImage(imageDataUrl);
+    } catch (error) {
+      console.error("Error generate feed:", error);
     } finally {
       setModalLoading(false);
     }
   };
+
+  /* ---------- Close Modal ---------- */
 
   const closeModal = () => {
     setModalOpen(false);
     setModalType(null);
     setModalQuote(null);
     setModalImage(null);
+    setModalLoading(false);
+    setModalSharing(false);
   };
 
-  /* ---------- Share dari Modal ---------- */
+  /* ---------- Share From Modal ---------- */
+
   const handleModalShare = async () => {
     if (!modalImage || !modalQuote) return;
+
     setModalSharing(true);
+
     try {
       const isReels = modalType === "reels";
-      const filename = isReels ? "quote-reels.png" : "quote-feed.png";
+      const filename = isReels
+        ? "quote-reels.png"
+        : "quote-feed.png";
       const title = isReels ? "Quote Reels" : "Quote Feed";
-      await shareOrDownload(modalImage, filename, title, modalQuote.text);
-    } catch (err) {
-      if (err.name !== "AbortError") {
-        console.error("Error sharing:", err);
+
+      await shareOrDownload(
+        modalImage,
+        filename,
+        title,
+        modalQuote.text
+      );
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        console.error("Error sharing:", error);
         alert("Gagal membagikan, silakan coba lagi");
       }
     } finally {
@@ -413,126 +521,201 @@ export default function QuotesKu() {
     }
   };
 
-  /* ---------- Toggle Mark Reels / Feed ---------- */
+  /* ---------- Toggle Mark Reels ---------- */
+
   const handleToggleReelsMark = async () => {
     if (!modalQuote) return;
-    const q = modalQuote;
-    const current = q.reelsStatus === "marked";
-    const newStatus = current ? "approved" : "marked";
+
+    const currentQuote = modalQuote;
+    const isCurrentlyMarked =
+      currentQuote.reelsStatus === "marked";
+    const nextStatus = isCurrentlyMarked
+      ? "approved"
+      : "marked";
 
     try {
-      const ref = doc(myQuotesCollection, q.id);
-      await updateDoc(ref, { reelsStatus: newStatus, updatedAt: new Date() });
+      const quoteRef = doc(
+        myQuotesCollection,
+        currentQuote.id
+      );
 
-      if (newStatus === "marked" && q.reelsBg) {
-        await markBackgroundAsUsed(q.reelsBg, q.id);
-      }
-      if (newStatus === "approved" && q.reelsBg) {
-        await releaseBackground(q.reelsBg);
-      }
+      await updateDoc(quoteRef, {
+        reelsStatus: nextStatus,
+        updatedAt: new Date(),
+      });
 
-      const updateFn = (prev) =>
-        prev.map((x) =>
-          x.id === q.id ? { ...x, reelsStatus: newStatus } : x
+      if (
+        nextStatus === "marked" &&
+        currentQuote.reelsBg
+      ) {
+        await markBackgroundAsUsed(
+          currentQuote.reelsBg,
+          currentQuote.id
         );
-      setAllQuotes(updateFn);
-      setFilteredQuotes(updateFn);
-      setModalQuote((prev) => ({ ...prev, reelsStatus: newStatus }));
-    } catch (err) {
-      console.error("Error toggle reels mark:", err);
+      }
+
+      if (
+        nextStatus === "approved" &&
+        currentQuote.reelsBg
+      ) {
+        await releaseBackground(currentQuote.reelsBg);
+      }
+
+      const updateQuotes = (previous) =>
+        previous.map((item) =>
+          item.id === currentQuote.id
+            ? {
+              ...item,
+              reelsStatus: nextStatus,
+            }
+            : item
+        );
+
+      setAllQuotes(updateQuotes);
+      setFilteredQuotes(updateQuotes);
+
+      setModalQuote((previous) => ({
+        ...previous,
+        reelsStatus: nextStatus,
+      }));
+    } catch (error) {
+      console.error("Error toggle reels mark:", error);
       alert("Gagal mengubah status tandai reels");
     }
   };
 
+  /* ---------- Toggle Mark Feed ---------- */
+
   const handleToggleFeedMark = async () => {
     if (!modalQuote) return;
-    const q = modalQuote;
-    const current = q.feedStatus === "marked";
-    const newStatus = current ? "approved" : "marked";
+
+    const currentQuote = modalQuote;
+    const isCurrentlyMarked =
+      currentQuote.feedStatus === "marked";
+    const nextStatus = isCurrentlyMarked
+      ? "approved"
+      : "marked";
 
     try {
-      const ref = doc(myQuotesCollection, q.id);
-      await updateDoc(ref, { feedStatus: newStatus, updatedAt: new Date() });
+      const quoteRef = doc(
+        myQuotesCollection,
+        currentQuote.id
+      );
 
-      const updateFn = (prev) =>
-        prev.map((x) =>
-          x.id === q.id ? { ...x, feedStatus: newStatus } : x
+      await updateDoc(quoteRef, {
+        feedStatus: nextStatus,
+        updatedAt: new Date(),
+      });
+
+      const updateQuotes = (previous) =>
+        previous.map((item) =>
+          item.id === currentQuote.id
+            ? {
+              ...item,
+              feedStatus: nextStatus,
+            }
+            : item
         );
-      setAllQuotes(updateFn);
-      setFilteredQuotes(updateFn);
-      setModalQuote((prev) => ({ ...prev, feedStatus: newStatus }));
-    } catch (err) {
-      console.error("Error toggle feed mark:", err);
+
+      setAllQuotes(updateQuotes);
+      setFilteredQuotes(updateQuotes);
+
+      setModalQuote((previous) => ({
+        ...previous,
+        feedStatus: nextStatus,
+      }));
+    } catch (error) {
+      console.error("Error toggle feed mark:", error);
       alert("Gagal mengubah status tandai feed");
     }
   };
 
-  /* ---------- Apply Filter & Sort ---------- */
+  /* ---------- Apply Search & Sort ---------- */
+
   const applyFiltersAndSort = (quotes, search) => {
     let result = [...quotes];
+
     if (search.trim()) {
       const keyword = search.toLowerCase();
-      result = result.filter(
-        (q) =>
-          q.text.toLowerCase().includes(keyword) ||
-          q.author?.toLowerCase().includes(keyword)
+
+      result = result.filter((quote) =>
+        quote.text?.toLowerCase().includes(keyword)
       );
     }
-    // Default: terbaru
-    result.sort((a, b) => {
-      const dA = a.createdAt?.toDate
-        ? a.createdAt.toDate()
-        : new Date(a.createdAt);
-      const dB = b.createdAt?.toDate
-        ? b.createdAt.toDate()
-        : new Date(b.createdAt);
-      return dB - dA;
+
+    result.sort((first, second) => {
+      const firstDate = first.createdAt?.toDate
+        ? first.createdAt.toDate()
+        : new Date(first.createdAt || 0);
+
+      const secondDate = second.createdAt?.toDate
+        ? second.createdAt.toDate()
+        : new Date(second.createdAt || 0);
+
+      return secondDate - firstDate;
     });
+
     return result;
   };
 
   useEffect(() => {
-    if (allQuotes.length > 0) {
-      const filtered = applyFiltersAndSort(allQuotes, searchTerm);
-      setFilteredQuotes(filtered);
-    }
+    const filtered = applyFiltersAndSort(
+      allQuotes,
+      searchTerm
+    );
+
+    setFilteredQuotes(filtered);
   }, [searchTerm, allQuotes]);
 
-  /* ---------- Shuffle (FAB) ---------- */
+  /* ---------- Shuffle ---------- */
+
   const handleShuffle = () => {
-    setFilteredQuotes((prev) => {
-      const arr = [...prev];
-      for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
+    setFilteredQuotes((previous) => {
+      const shuffled = [...previous];
+
+      for (let index = shuffled.length - 1; index > 0; index--) {
+        const randomIndex = Math.floor(
+          Math.random() * (index + 1)
+        );
+
+        [shuffled[index], shuffled[randomIndex]] = [
+          shuffled[randomIndex],
+          shuffled[index],
+        ];
       }
-      return arr;
+
+      return shuffled;
     });
   };
 
   /* ---------- Fetch Quotes ---------- */
+
   useEffect(() => {
     const fetchQuotes = async () => {
       try {
-        const q = query(
+        const quotesQuery = query(
           myQuotesCollection,
           where("status", "in", ["approved", "marked"]),
           orderBy("createdAt", "desc")
         );
-        const snapshot = await getDocs(q);
-        const data = snapshot.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-          likes: d.data().likes || 0,
+
+        const snapshot = await getDocs(quotesQuery);
+
+        const data = snapshot.docs.map((quoteDocument) => ({
+          id: quoteDocument.id,
+          ...quoteDocument.data(),
+          likes: quoteDocument.data().likes || 0,
         }));
 
         const storythurQuotes = data.filter(
-          (quote) => quote.author?.toLowerCase() === "storythur"
+          (quote) =>
+            quote.author?.toLowerCase() === "storythur"
         );
 
         setAllQuotes(storythurQuotes);
 
         const initialStates = {};
+
         storythurQuotes.forEach((quote) => {
           initialStates[quote.id] = {
             isLiked: false,
@@ -540,268 +723,280 @@ export default function QuotesKu() {
             likesCount: quote.likes || 0,
           };
         });
+
         setQuoteStates(initialStates);
 
-        setFilteredQuotes(applyFiltersAndSort(storythurQuotes, ""));
-      } catch (err) {
-        console.error("Error fetch quotes:", err);
+        setFilteredQuotes(
+          applyFiltersAndSort(storythurQuotes, "")
+        );
+      } catch (error) {
+        console.error("Error fetch quotes:", error);
       } finally {
         setLoading(false);
       }
     };
+
     fetchQuotes();
   }, []);
 
-  const getDisplayMessage = () => {
-    if (loading) return "Memuat quotes...";
-    if (filteredQuotes.length === 0) {
-      if (searchTerm)
-        return `Tidak ada quote yang mengandung kata "${searchTerm}"`;
-      return "Tidak ada quote yang ditemukan";
+  /* ---------- Search Placeholder ---------- */
+
+  const getSearchPlaceholder = () => {
+    if (loading) {
+      return "Memuat quotes...";
     }
-    if (searchTerm)
-      return `${filteredQuotes.length} hasil untuk "${searchTerm}"`;
-    return `${filteredQuotes.length} quotes`;
+
+    return `Cari dari ${allQuotes.length} quotes...`;
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#f0f4f8] to-[#f9fafb] pb-24">
+    <div className="min-h-screen bg-[#f7f8fa] pb-24 text-gray-900">
       <BottomAdd />
 
-      {/* Header + Search (sticky, auto-hide) */}
-      <div
-        className={`sticky top-0 z-40 transition-transform duration-300 ${showSearch ? "translate-y-0" : "-translate-y-full"
-          }`}
-      >
-        <div className="bg-white/80 backdrop-blur-lg border-b border-gray-100 shadow-sm">
-          {/* Title */}
-          <div className="max-w-lg mx-auto px-5 pt-4 pb-2 flex items-center gap-2">
-            <div className="w-9 h-9 bg-gradient-to-tr from-[#355485] to-[#4f90c6] rounded-xl flex items-center justify-center shadow-md shadow-[#4f90c6]/30">
-              <i className="ri-quill-pen-fill text-white text-lg"></i>
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-gray-800 leading-tight">
-                Quotes
-              </h1>
-              <p className="text-[10px] text-gray-500">
-                {getDisplayMessage()}
-              </p>
-            </div>
-          </div>
-
-          {/* Search */}
-          <div className="max-w-lg mx-auto px-5 pb-3">
+      {/* Search Header */}
+      <header className="fixed left-0 right-0 top-0 z-40">
+        <div className="border-b border-gray-200/80 bg-white/95 px-4 py-3 backdrop-blur-md sm:px-6">
+          <div className="mx-auto max-w-2xl">
             <div className="relative">
-              <i className="ri-search-line absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-base"></i>
+              <Search
+                size={17}
+                strokeWidth={1.8}
+                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+
               <input
                 type="text"
-                placeholder="Cari quotes..."
-                className="w-full py-2.5 pl-11 pr-10 rounded-2xl border border-gray-200 bg-gray-50 focus:bg-white focus:outline-none focus:border-[#4f90c6] focus:ring-2 focus:ring-[#4f90c6]/20 text-sm transition-all"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(event) =>
+                  setSearchTerm(event.target.value)
+                }
+                placeholder={getSearchPlaceholder()}
+                className="h-10 w-full border border-gray-200 bg-gray-50 pl-10 pr-10 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-[#4f90c6] focus:bg-white focus:ring-2 focus:ring-[#4f90c6]/10"
               />
+
               {searchTerm && (
                 <button
+                  type="button"
                   onClick={() => setSearchTerm("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center rounded-full hover:bg-gray-200 transition"
+                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center text-gray-400 transition hover:text-gray-700"
+                  aria-label="Hapus pencarian"
                 >
-                  <i className="ri-close-line text-base text-gray-500"></i>
+                  <X size={16} strokeWidth={1.8} />
                 </button>
               )}
             </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* List */}
-      <div className="max-w-lg mx-auto px-4 pt-4 pb-8">
+      {/* Quotes List */}
+      <main className="mx-auto max-w-2xl px-4 pt-20 sm:px-6 sm:pt-24">
         {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3, 4, 5].map((i) => (
+          <div className="divide-y divide-gray-200 border-y border-gray-200 bg-white">
+            {[1, 2, 3, 4, 5].map((item) => (
               <div
-                key={i}
-                className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 animate-pulse"
+                key={item}
+                className="animate-pulse px-4 py-5 sm:px-5"
               >
-                <div className="h-4 bg-gray-200 rounded w-24 mb-3"></div>
-                <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded w-10/12"></div>
+                <div className="mb-3 h-4 w-full bg-gray-100" />
+                <div className="mb-2 h-4 w-11/12 bg-gray-100" />
+                <div className="h-4 w-8/12 bg-gray-100" />
+
+                <div className="mt-5 flex justify-between">
+                  <div className="h-7 w-20 bg-gray-100" />
+                  <div className="flex gap-2">
+                    <div className="h-7 w-7 bg-gray-100" />
+                    <div className="h-7 w-7 bg-gray-100" />
+                  </div>
+                </div>
               </div>
             ))}
           </div>
-        ) : (
-          <div className="space-y-3">
-            {filteredQuotes.length > 0 ? (
-              filteredQuotes.map((q) => {
-                const state = quoteStates[q.id] || {
-                  isLiked: false,
-                  isLiking: false,
-                  likesCount: 0,
-                };
-                const isReelsMarked = q.reelsStatus === "marked";
-                const isFeedMarked = q.feedStatus === "marked";
-                const isCopied = copiedId === q.id;
+        ) : filteredQuotes.length > 0 ? (
+          <div className="divide-y divide-gray-200 border-y border-gray-200 bg-white">
+            {filteredQuotes.map((quote) => {
+              const state = quoteStates[quote.id] || {
+                isLiked: false,
+                isLiking: false,
+                likesCount: quote.likes || 0,
+              };
 
-                return (
-                  <div
-                    key={q.id}
-                    className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 hover:shadow-md active:scale-[0.99] transition-all"
-                  >
-                    {/* Header */}
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-9 h-9 bg-gradient-to-tr from-[#355485] to-[#4f90c6] rounded-2xl flex items-center justify-center shadow-sm">
-                          <i className="ri-user-fill text-white text-sm"></i>
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-semibold text-gray-800 leading-tight">
-                            {q.author}
-                          </h3>
-                          <p className="text-[11px] text-gray-400">
-                            {getRelativeTime(q.createdAt)}
-                          </p>
-                        </div>
-                      </div>
+              const isReelsMarked =
+                quote.reelsStatus === "marked";
+              const isFeedMarked =
+                quote.feedStatus === "marked";
+              return (
+                <article
+                  key={quote.id}
+                  className="px-4 py-5 transition-colors hover:bg-gray-50/70 sm:px-5"
+                >
+                  {/* Quote Text */}
+                  <div className="relative">
+                    <span className="pointer-events-none absolute -left-1 -top-3 select-none font-serif text-4xl leading-none text-gray-200">
+                      “
+                    </span>
 
-                      {/* Status badges */}
-                      <div className="flex gap-1.5">
-                        <span
-                          className={`text-[10px] px-2 py-1 rounded-full font-semibold flex items-center gap-1 transition-all ${isReelsMarked
-                              ? "bg-purple-100 text-purple-700"
-                              : "bg-gray-100 text-gray-400"
-                            }`}
-                          title={isReelsMarked ? "Reels sudah" : "Reels belum"}
-                        >
-                          <i
-                            className={`${isReelsMarked
-                                ? "ri-checkbox-circle-fill"
-                                : "ri-film-line"
-                              } text-xs`}
-                          ></i>
-                          Reels
+                    <p className="relative pl-3 text-[15px] font-normal leading-7 tracking-[-0.01em] text-gray-700 sm:text-base">
+                      {highlightText(
+                        quote.text || "",
+                        searchTerm
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="mt-5 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleLike(
+                            quote.id,
+                            state.likesCount,
+                            state.isLiked
+                          )
+                        }
+                        disabled={state.isLiking}
+                        className={`inline-flex h-8 items-center gap-1.5 px-2 text-xs transition ${state.isLiked
+                          ? "text-red-500"
+                          : "text-gray-500 hover:text-gray-800"
+                          }`}
+                        title="Sukai quote"
+                      >
+                        <Heart
+                          size={16}
+                          strokeWidth={1.8}
+                          fill={
+                            state.isLiked
+                              ? "currentColor"
+                              : "none"
+                          }
+                        />
+
+                        <span className="tabular-nums">
+                          {state.likesCount}
                         </span>
-                        <span
-                          className={`text-[10px] px-2 py-1 rounded-full font-semibold flex items-center gap-1 transition-all ${isFeedMarked
-                              ? "bg-pink-100 text-pink-700"
-                              : "bg-gray-100 text-gray-400"
-                            }`}
-                          title={isFeedMarked ? "Feed sudah" : "Feed belum"}
-                        >
-                          <i
-                            className={`${isFeedMarked
-                                ? "ri-checkbox-circle-fill"
-                                : "ri-image-line"
-                              } text-xs`}
-                          ></i>
-                          Feed
-                        </span>
-                      </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleShareFromCard(quote)}
+                        className="inline-flex h-8 items-center gap-1.5 px-2 text-xs text-gray-500 transition hover:text-gray-800"
+                        title="Bagikan quote"
+                      >
+                        <Send size={16} strokeWidth={1.8} />
+                        <span className="hidden sm:inline">Bagikan</span>
+                      </button>
                     </div>
 
-                    {/* Text */}
-                    <p className="text-gray-700 text-[15px] leading-relaxed mb-4 font-[450]">
-                      {highlightText(q.text, searchTerm)}
-                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => openFeedModal(quote)}
+                        className={`relative flex h-8 w-8 items-center justify-center border transition ${isFeedMarked
+                          ? "border-pink-200 bg-pink-50 text-pink-600"
+                          : "border-gray-200 bg-white text-gray-500 hover:border-pink-200 hover:bg-pink-50 hover:text-pink-600"
+                          }`}
+                        title={
+                          isFeedMarked
+                            ? "Feed sudah ditandai"
+                            : "Preview Feed"
+                        }
+                      >
+                        {isFeedMarked ? (
+                          <CheckCircle2
+                            size={16}
+                            strokeWidth={1.8}
+                          />
+                        ) : (
+                          <ImageIcon
+                            size={16}
+                            strokeWidth={1.8}
+                          />
+                        )}
+                      </button>
 
-                    {/* Actions */}
-                    <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                      <div className="flex items-center gap-1">
-                        {/* Like */}
-                        <button
-                          onClick={() =>
-                            handleLike(q.id, state.likesCount, state.isLiked)
-                          }
-                          disabled={state.isLiking}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-gray-50 active:scale-95 transition"
-                        >
-                          <i
-                            className={`ri-heart-${state.isLiked ? "fill" : "line"
-                              } text-lg ${state.isLiked
-                                ? "text-red-500"
-                                : "text-gray-500"
-                              }`}
-                          ></i>
-                          <span className="text-xs font-medium text-gray-600">
-                            {state.likesCount}
-                          </span>
-                        </button>
-
-                        {/* Copy */}
-                        <button
-                          onClick={() => handleCopyFromCard(q)}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-gray-50 active:scale-95 transition"
-                          title="Salin teks"
-                        >
-                          <i
-                            className={`${isCopied
-                                ? "ri-check-line text-emerald-500"
-                                : "ri-file-copy-line text-gray-500"
-                              } text-lg`}
-                          ></i>
-                          {isCopied && (
-                            <span className="text-[11px] font-medium text-emerald-600">
-                              Tersalin
-                            </span>
-                          )}
-                        </button>
-                      </div>
-
-                      {/* Preview buttons */}
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => openFeedModal(q)}
-                          className="w-9 h-9 flex items-center justify-center rounded-xl bg-pink-50 hover:bg-pink-100 active:scale-95 transition"
-                          title="Preview Feed"
-                        >
-                          <i className="ri-image-line text-base text-pink-600"></i>
-                        </button>
-                        <button
-                          onClick={() => openReelsModal(q)}
-                          className="w-9 h-9 flex items-center justify-center rounded-xl bg-purple-50 hover:bg-purple-100 active:scale-95 transition"
-                          title="Preview Reels"
-                        >
-                          <i className="ri-film-line text-base text-purple-600"></i>
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openReelsModal(quote)}
+                        className={`relative flex h-8 w-8 items-center justify-center border transition ${isReelsMarked
+                          ? "border-violet-200 bg-violet-50 text-violet-600"
+                          : "border-gray-200 bg-white text-gray-500 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-600"
+                          }`}
+                        title={
+                          isReelsMarked
+                            ? "Reels sudah ditandai"
+                            : "Preview Reels"
+                        }
+                      >
+                        {isReelsMarked ? (
+                          <CheckCircle2
+                            size={16}
+                            strokeWidth={1.8}
+                          />
+                        ) : (
+                          <Film
+                            size={16}
+                            strokeWidth={1.8}
+                          />
+                        )}
+                      </button>
                     </div>
                   </div>
-                );
-              })
-            ) : (
-              <div className="text-center py-16 bg-white rounded-3xl border border-gray-100">
-                <i className="ri-inbox-line text-5xl text-gray-300 mb-3"></i>
-                <p className="text-gray-500 text-sm">
-                  {searchTerm
-                    ? `Tidak ada quote dengan kata "${searchTerm}"`
-                    : "Tidak ada quote yang ditemukan"}
-                </p>
-                {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm("")}
-                    className="mt-3 text-[#4f90c6] text-xs font-medium"
-                  >
-                    Hapus pencarian
-                  </button>
-                )}
-              </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="border-y border-gray-200 bg-white px-5 py-16 text-center">
+            <Inbox
+              size={34}
+              strokeWidth={1.3}
+              className="mx-auto mb-4 text-gray-300"
+            />
+
+            <p className="text-sm text-gray-500">
+              {searchTerm
+                ? `Tidak ada quote yang mengandung kata "${searchTerm}"`
+                : "Tidak ada quote yang ditemukan"}
+            </p>
+
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="mt-4 text-xs font-medium text-[#4f90c6] hover:underline"
+              >
+                Hapus pencarian
+              </button>
             )}
           </div>
         )}
-      </div>
+      </main>
 
-      {/* FAB Acak — kiri bawah */}
+      {/* Shuffle Button */}
       <button
+        type="button"
         onClick={handleShuffle}
-        className="fixed bottom-24 left-5 z-40 w-14 h-14 rounded-full bg-gradient-to-tr from-[#355485] to-[#4f90c6] text-white shadow-lg shadow-[#4f90c6]/40 flex items-center justify-center hover:scale-105 active:scale-95 transition-all"
+        className="fixed bottom-5 right-5 z-50 flex h-10 w-10 items-center justify-center bg-[#355485] text-white shadow-lg shadow-[#355485]/20 transition hover:bg-[#2a436c] active:scale-95 sm:bottom-6 sm:right-6"
         title="Acak quotes"
+        aria-label="Acak quotes"
       >
-        <i className="ri-shuffle-line text-2xl"></i>
+        <Shuffle
+          size={18}
+          strokeWidth={1.9}
+        />
       </button>
 
-      {/* Modal Preview */}
+      {/* Preview Modal */}
       <PreviewModal
         isOpen={modalOpen}
         onClose={closeModal}
-        title={modalType === "reels" ? "Preview Reels" : "Preview Feed"}
+        title={
+          modalType === "reels"
+            ? "Preview Reels"
+            : "Preview Feed"
+        }
         imageUrl={modalImage}
         loading={modalLoading}
         isMarked={
@@ -810,7 +1005,9 @@ export default function QuotesKu() {
             : modalQuote?.feedStatus === "marked"
         }
         onToggleMark={
-          modalType === "reels" ? handleToggleReelsMark : handleToggleFeedMark
+          modalType === "reels"
+            ? handleToggleReelsMark
+            : handleToggleFeedMark
         }
         onShare={handleModalShare}
         sharing={modalSharing}
