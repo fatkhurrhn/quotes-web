@@ -24,7 +24,7 @@ import {
   Clock3,
 } from "lucide-react";
 
-import { myQuotesCollection } from "../firebase";
+import { db, myQuotesCollection } from "../firebase";
 
 import {
   getDocs,
@@ -285,11 +285,54 @@ const ManageQuotes = () => {
     handleStatusChange(quoteId, "rejected");
   };
 
-  const handleMarkToggle = async (quoteId, currentStatus) => {
-    const newStatus =
-      currentStatus === "marked" ? "approved" : "marked";
+  const handleToggleFeedMark = async (quote) => {
+    const nextStatus = quote.feedStatus === "marked" ? "approved" : "marked";
 
-    await handleStatusChange(quoteId, newStatus);
+    try {
+      await updateDoc(doc(db, "my-quotes", quote.id), {
+        feedStatus: nextStatus,
+        updatedAt: serverTimestamp(),
+      });
+
+      setQuotes((prevQuotes) =>
+        prevQuotes.map((item) =>
+          item.id === quote.id ? { ...item, feedStatus: nextStatus } : item
+        )
+      );
+
+      showNotificationMessage(
+        `Status Feed berhasil diubah menjadi ${nextStatus === "marked" ? "ditandai" : "disetujui"}.`,
+        "success"
+      );
+    } catch (error) {
+      console.error("Error toggling feed mark:", error);
+      showNotificationMessage("Gagal mengubah tanda Feed.", "error");
+    }
+  };
+
+  const handleToggleReelsMark = async (quote) => {
+    const nextStatus = quote.reelsStatus === "marked" ? "approved" : "marked";
+
+    try {
+      await updateDoc(doc(db, "my-quotes", quote.id), {
+        reelsStatus: nextStatus,
+        updatedAt: serverTimestamp(),
+      });
+
+      setQuotes((prevQuotes) =>
+        prevQuotes.map((item) =>
+          item.id === quote.id ? { ...item, reelsStatus: nextStatus } : item
+        )
+      );
+
+      showNotificationMessage(
+        `Status Reels berhasil diubah menjadi ${nextStatus === "marked" ? "ditandai" : "disetujui"}.`,
+        "success"
+      );
+    } catch (error) {
+      console.error("Error toggling reels mark:", error);
+      showNotificationMessage("Gagal mengubah tanda Reels.", "error");
+    }
   };
 
   // =========================================================
@@ -473,6 +516,8 @@ const ManageQuotes = () => {
         author: DEFAULT_AUTHOR,
         category: "",
         status: "approved",
+        feedStatus: "approved",
+        reelsStatus: "approved",
         likes: 0,
         views: 0,
       };
@@ -712,6 +757,8 @@ const ManageQuotes = () => {
           author: DEFAULT_AUTHOR,
           category: "",
           status: "approved",
+          feedStatus: "approved",
+          reelsStatus: "approved",
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
           likes: 0,
@@ -1036,8 +1083,8 @@ const ManageQuotes = () => {
       {notification && (
         <div
           className={`fixed left-4 right-4 top-4 z-[100] flex items-start gap-3 border px-4 py-3 shadow-xl sm:left-auto sm:max-w-sm ${notification.type === "error"
-              ? "border-red-200 bg-red-50 text-red-700"
-              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+            ? "border-red-200 bg-red-50 text-red-700"
+            : "border-emerald-200 bg-emerald-50 text-emerald-700"
             }`}
         >
           {notification.type === "error" ? (
@@ -1201,8 +1248,8 @@ const ManageQuotes = () => {
                     <tr
                       key={quote.id}
                       className={`transition hover:bg-[#fbfcfe] ${quote.status === "pending"
-                          ? "bg-amber-50/30"
-                          : ""
+                        ? "bg-amber-50/30"
+                        : ""
                         }`}
                     >
                       <td className="px-5 py-4 align-top text-sm text-gray-400">
@@ -1258,9 +1305,6 @@ const ManageQuotes = () => {
                               Rejected
                             </option>
 
-                            <option value="marked">
-                              Marked
-                            </option>
                           </select>
 
                           <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2">
@@ -1306,27 +1350,28 @@ const ManageQuotes = () => {
 
                           <button
                             type="button"
-                            onClick={() =>
-                              handleMarkToggle(
-                                quote.id,
-                                quote.status
-                              )
-                            }
-                            className={`flex h-8 items-center gap-1.5 border px-2.5 text-xs font-semibold transition active:scale-95 ${quote.status === "marked"
-                                ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                                : "border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100"
+                            onClick={() => handleToggleFeedMark(quote)}
+                            className={`flex h-8 items-center gap-1.5 border px-2.5 text-xs font-semibold transition active:scale-95 ${quote.feedStatus === "marked"
+                              ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                              : "border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100"
                               }`}
-                            title="Tandai quote"
+                            title="Tandai Feed"
                           >
-                            {quote.status === "marked" ? (
-                              <BookmarkCheck size={14} />
-                            ) : (
-                              <Bookmark size={14} />
-                            )}
+                            {quote.feedStatus === "marked" ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
+                            Feed
+                          </button>
 
-                            {quote.status === "marked"
-                              ? "Ditandai"
-                              : "Tandai"}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleReelsMark(quote)}
+                            className={`flex h-8 items-center gap-1.5 border px-2.5 text-xs font-semibold transition active:scale-95 ${quote.reelsStatus === "marked"
+                              ? "border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100"
+                              : "border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100"
+                              }`}
+                            title="Tandai Reels"
+                          >
+                            {quote.reelsStatus === "marked" ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
+                            Reels
                           </button>
                         </div>
                       </td>
@@ -1416,8 +1461,8 @@ const ManageQuotes = () => {
               <article
                 key={quote.id}
                 className={`border bg-white shadow-sm ${quote.status === "pending"
-                    ? "border-amber-200"
-                    : "border-[#e5eaf0]"
+                  ? "border-amber-200"
+                  : "border-[#e5eaf0]"
                   }`}
               >
                 {/* Card Header */}
@@ -1464,101 +1509,83 @@ const ManageQuotes = () => {
 
                 {/* Quick Actions */}
 
-                <div className="border-t border-[#edf0f4] bg-[#fbfcfe] p-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    {quote.status !== "approved" ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleApprove(quote.id)
-                        }
-                        className="flex h-10 items-center justify-center gap-2 border border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 active:scale-[0.98]"
-                      >
-                        <Check size={16} />
-                        Setujui
-                      </button>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:hidden">
+                  {/* Feed */}
+                  <button
+                    type="button"
+                    onClick={() => handleToggleFeedMark(quote)}
+                    className={`flex h-9 items-center justify-center gap-1.5 border text-[11px] font-semibold transition active:scale-[0.98] ${quote.feedStatus === "marked"
+                        ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-100"
+                      }`}
+                  >
+                    {quote.feedStatus === "marked" ? (
+                      <BookmarkCheck size={14} />
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleStatusChange(
-                            quote.id,
-                            "pending"
-                          )
-                        }
-                        className="flex h-10 items-center justify-center gap-2 border border-amber-200 bg-amber-50 text-xs font-bold text-amber-700 transition hover:bg-amber-100 active:scale-[0.98]"
-                      >
-                        <Clock3 size={16} />
-                        Pending
-                      </button>
+                      <Bookmark size={14} />
                     )}
+                    Feed
+                  </button>
 
-                    {quote.status !== "rejected" ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleReject(quote.id)
-                        }
-                        className="flex h-10 items-center justify-center gap-2 border border-red-200 bg-red-50 text-xs font-bold text-red-700 transition hover:bg-red-100 active:scale-[0.98]"
-                      >
-                        <XCircle size={16} />
-                        Tolak
-                      </button>
+                  {/* Reels */}
+                  <button
+                    type="button"
+                    onClick={() => handleToggleReelsMark(quote)}
+                    className={`flex h-9 items-center justify-center gap-1.5 border text-[11px] font-semibold transition active:scale-[0.98] ${quote.reelsStatus === "marked"
+                        ? "border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100"
+                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-100"
+                      }`}
+                  >
+                    {quote.reelsStatus === "marked" ? (
+                      <BookmarkCheck size={14} />
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleApprove(quote.id)
-                        }
-                        className="flex h-10 items-center justify-center gap-2 border border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 active:scale-[0.98]"
-                      >
-                        <Check size={16} />
-                        Setujui
-                      </button>
+                      <Bookmark size={14} />
                     )}
-                  </div>
+                    Reels
+                  </button>
+                </div>
 
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleMarkToggle(
-                          quote.id,
-                          quote.status
-                        )
-                      }
-                      className={`flex h-9 items-center justify-center gap-1.5 border text-[11px] font-semibold transition active:scale-[0.98] ${quote.status === "marked"
-                          ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                          : "border-gray-200 bg-white text-gray-600 hover:bg-gray-100"
-                        }`}
-                    >
-                      {quote.status === "marked" ? (
-                        <BookmarkCheck size={14} />
-                      ) : (
-                        <Bookmark size={14} />
-                      )}
+                {/* Tombol status dan pengelolaan */}
+                <div className="mt-2 grid grid-cols-4 gap-1.5 sm:hidden">
+                  {/* Pending */}
+                  <button
+                    type="button"
+                    onClick={() => handleSetStatus(quote, "pending")}
+                    className="flex h-9 items-center justify-center gap-1 border border-amber-200 bg-amber-50 text-[10px] font-semibold text-amber-700 transition hover:bg-amber-100 active:scale-[0.98]"
+                  >
+                    <Clock3 size={13} />
+                    Pending
+                  </button>
 
-                      Tandai
-                    </button>
+                  {/* Tolak */}
+                  <button
+                    type="button"
+                    onClick={() => handleSetStatus(quote, "rejected")}
+                    className="flex h-9 items-center justify-center gap-1 border border-red-200 bg-red-50 text-[10px] font-semibold text-red-700 transition hover:bg-red-100 active:scale-[0.98]"
+                  >
+                    <XCircle size={13} />
+                    Tolak
+                  </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleEdit(quote)}
-                      className="flex h-9 items-center justify-center gap-1.5 border border-gray-200 bg-white text-[11px] font-semibold text-gray-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 active:scale-[0.98]"
-                    >
-                      <Edit3 size={14} />
-                      Edit
-                    </button>
+                  {/* Edit */}
+                  <button
+                    type="button"
+                    onClick={() => handleEdit(quote)}
+                    className="flex h-9 items-center justify-center gap-1 border border-gray-200 bg-white text-[10px] font-semibold text-gray-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 active:scale-[0.98]"
+                  >
+                    <Edit3 size={13} />
+                    Edit
+                  </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(quote.id)}
-                      className="flex h-9 items-center justify-center gap-1.5 border border-gray-200 bg-white text-[11px] font-semibold text-gray-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 active:scale-[0.98]"
-                    >
-                      <Trash2 size={14} />
-                      Hapus
-                    </button>
-                  </div>
+                  {/* Hapus */}
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(quote)}
+                    className="flex h-9 items-center justify-center gap-1 border border-gray-200 bg-white text-[10px] font-semibold text-gray-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 active:scale-[0.98]"
+                  >
+                    <Trash2 size={13} />
+                    Hapus
+                  </button>
                 </div>
               </article>
             ))
