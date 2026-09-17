@@ -336,6 +336,7 @@ export default function QuotesKu() {
   const [modalImage, setModalImage] = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [modalSharing, setModalSharing] = useState(false);
+  const [modalShufflingBg, setModalShufflingBg] = useState(false);
 
   /* ---------- Like ---------- */
 
@@ -489,6 +490,7 @@ export default function QuotesKu() {
     setModalImage(null);
     setModalLoading(false);
     setModalSharing(false);
+    setModalShufflingBg(false);
   };
 
   /* ---------- Share From Modal ---------- */
@@ -518,6 +520,52 @@ export default function QuotesKu() {
       }
     } finally {
       setModalSharing(false);
+    }
+  };
+
+  /* ---------- Shuffle Background (Reels Only) ---------- */
+
+  const handleShuffleBackground = async () => {
+    if (!modalQuote || modalType !== "reels") return;
+
+    setModalShufflingBg(true);
+
+    try {
+      const newBackground = await getRandomUnusedBackground();
+
+      const quoteRef = doc(myQuotesCollection, modalQuote.id);
+
+      await updateDoc(quoteRef, {
+        reelsBg: newBackground,
+        updatedAt: new Date(),
+      });
+
+      const updateQuotes = (previous) =>
+        previous.map((item) =>
+          item.id === modalQuote.id
+            ? { ...item, reelsBg: newBackground }
+            : item
+        );
+
+      setAllQuotes(updateQuotes);
+      setFilteredQuotes(updateQuotes);
+
+      setModalQuote((previous) => ({
+        ...previous,
+        reelsBg: newBackground,
+      }));
+
+      const newImage = await generateReelsImage(
+        modalQuote.text,
+        newBackground
+      );
+
+      setModalImage(newImage);
+    } catch (error) {
+      console.error("Error shuffle background:", error);
+      alert("Gagal mengacak background, silakan coba lagi");
+    } finally {
+      setModalShufflingBg(false);
     }
   };
 
@@ -1011,6 +1059,9 @@ export default function QuotesKu() {
         }
         onShare={handleModalShare}
         sharing={modalSharing}
+        onShuffleBg={handleShuffleBackground}
+        shufflingBg={modalShufflingBg}
+        canShuffleBg={modalType === "reels"}
       />
     </div>
   );

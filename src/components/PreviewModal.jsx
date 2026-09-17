@@ -6,6 +6,7 @@ import {
     CheckCheck,
     LoaderCircle,
     AlertCircle,
+    Shuffle,
 } from "lucide-react";
 
 export default function PreviewModal({
@@ -18,6 +19,9 @@ export default function PreviewModal({
     onToggleMark,
     onShare,
     sharing,
+    onShuffleBg,      // <-- baru
+    shufflingBg,      // <-- baru
+    canShuffleBg,     // <-- baru (opsional, biar kontrol dari parent)
 }) {
     if (!isOpen) return null;
 
@@ -106,7 +110,6 @@ export default function PreviewModal({
                 <div className="flex min-h-[300px] flex-1 items-center justify-center overflow-y-auto bg-[#f7f8fa] p-5 sm:p-6">
                     {loading ? (
                         <div className="flex w-full flex-col items-center justify-center gap-4">
-                            {/* Format Canvas Skeleton */}
                             <div
                                 className={`relative flex ${previewFormat.canvasClass} w-full max-w-[280px] items-center justify-center overflow-hidden border border-gray-200 bg-white shadow-sm`}
                             >
@@ -167,6 +170,35 @@ export default function PreviewModal({
 
                 {/* Actions */}
                 <div className="space-y-2 border-t border-gray-100 bg-white px-5 py-4">
+                    {/* Shuffle Background (khusus Reels) */}
+                    {isReels && canShuffleBg && (
+                        <button
+                            type="button"
+                            onClick={onShuffleBg}
+                            disabled={loading || shufflingBg || !imageUrl}
+                            className="flex w-full items-center justify-center gap-2 border border-violet-200 bg-violet-50 px-4 py-3 text-xs font-semibold text-violet-700 transition hover:bg-violet-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+                        >
+                            {shufflingBg ? (
+                                <LoaderCircle
+                                    size={16}
+                                    strokeWidth={1.9}
+                                    className="animate-spin"
+                                />
+                            ) : (
+                                <Shuffle
+                                    size={16}
+                                    strokeWidth={1.9}
+                                />
+                            )}
+
+                            <span>
+                                {shufflingBg
+                                    ? "Mengacak background..."
+                                    : "Acak Background"}
+                            </span>
+                        </button>
+                    )}
+
                     <div className="grid grid-cols-2 gap-2">
                         {/* Download */}
                         <button
@@ -175,11 +207,7 @@ export default function PreviewModal({
                             disabled={loading || !imageUrl}
                             className="flex items-center justify-center gap-2 border border-gray-200 bg-white px-4 py-3 text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            <Download
-                                size={16}
-                                strokeWidth={1.9}
-                            />
-
+                            <Download size={16} strokeWidth={1.9} />
                             <span className="text-xs font-semibold sm:text-sm">
                                 Download
                             </span>
@@ -206,9 +234,7 @@ export default function PreviewModal({
                             )}
 
                             <span className="text-xs font-semibold sm:text-sm">
-                                {sharing
-                                    ? "Membagikan..."
-                                    : "Bagikan"}
+                                {sharing ? "Membagikan..." : "Bagikan"}
                             </span>
                         </button>
                     </div>
@@ -219,12 +245,9 @@ export default function PreviewModal({
                         onClick={onToggleMark}
                         disabled={loading}
                         className={`flex w-full items-center justify-center gap-2 border px-4 py-3 text-xs font-semibold transition active:scale-[0.98] sm:text-sm ${isMarked
-                                ? "border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
-                                : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
-                            } ${loading
-                                ? "cursor-not-allowed opacity-50"
-                                : ""
-                            }`}
+                            ? "border-green-200 bg-green-50 text-green-700 hover:bg-green-100"
+                            : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+                            } ${loading ? "cursor-not-allowed opacity-50" : ""}`}
                     >
                         {isMarked ? (
                             <CheckCheck
