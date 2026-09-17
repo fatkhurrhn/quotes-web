@@ -794,7 +794,7 @@ export default function QuotesKu() {
       return "Memuat quotes...";
     }
 
-    return `Cari dari ${allQuotes.length} quotes...`;
+    return `cari dari ${allQuotes.length} quotes...`;
   };
 
   return (
