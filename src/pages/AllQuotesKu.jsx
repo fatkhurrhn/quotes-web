@@ -1036,7 +1036,7 @@ export default function QuotesKu() {
         />
       </button>
 
-      {/* Preview Modal */}
+      {/* Preview Modals */}
       <PreviewModal
         isOpen={modalOpen}
         onClose={closeModal}
