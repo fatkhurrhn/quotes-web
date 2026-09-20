@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react'
 import {
     Share2, Trash2, Pencil, Upload, Loader2, ImageOff,
-    X, Check, AlertTriangle, ArrowLeft
+    X, Check, AlertTriangle
 } from 'lucide-react'
 
 const API_BASE = 'https://igfatkhurrhn.fatkhurrhnn.workers.dev'
+const CACHE_KEY = 'igfatkhurrhn_files_cache'
 
 export default function IGFatkhurrhn() {
     const [files, setFiles] = useState([])
@@ -12,22 +13,24 @@ export default function IGFatkhurrhn() {
     const [error, setError] = useState(null)
     const [uploading, setUploading] = useState(false)
 
-    const [selectedIndex, setSelectedIndex] = useState(null)
+    const [selected, setSelected] = useState(null)
     const [deleteTarget, setDeleteTarget] = useState(null)
     const [renameTarget, setRenameTarget] = useState(null)
     const [renameValue, setRenameValue] = useState('')
 
     const fileInputRef = useRef(null)
 
-    const selected = selectedIndex !== null ? files[selectedIndex] : null
-
+    // Ambil dari cache dulu, terus fetch di background
     async function fetchFiles() {
-        setLoading(true)
         try {
             const res = await fetch(`${API_BASE}/api/list`)
             const data = await res.json()
             setFiles(data)
             setError(null)
+            // simpan ke sessionStorage
+            try {
+                sessionStorage.setItem(CACHE_KEY, JSON.stringify(data))
+            } catch (e) { }
         } catch (err) {
             setError(err.message)
         } finally {
@@ -35,7 +38,18 @@ export default function IGFatkhurrhn() {
         }
     }
 
-    useEffect(() => { fetchFiles() }, [])
+    useEffect(() => {
+        // cek cache dulu
+        try {
+            const cached = sessionStorage.getItem(CACHE_KEY)
+            if (cached) {
+                setFiles(JSON.parse(cached))
+                setLoading(false)
+            }
+        } catch (e) { }
+        // tetep fetch di background (biar dapet data baru)
+        fetchFiles()
+    }, [])
 
     // ---------- Upload ----------
     async function handleUpload(e) {
@@ -67,9 +81,11 @@ export default function IGFatkhurrhn() {
         if (!deleteTarget) return
         const key = deleteTarget.key
         const prev = files
-        setFiles(f => f.filter(x => x.key !== key))
+        const next = files.filter(x => x.key !== key)
+        setFiles(next)
         setDeleteTarget(null)
-        setSelectedIndex(null)
+        setSelected(null)
+        try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(next)) } catch (e) { }
 
         try {
             const res = await fetch(`${API_BASE}/api/delete/${encodeURIComponent(key)}`, {
@@ -78,6 +94,7 @@ export default function IGFatkhurrhn() {
             if (!res.ok) throw new Error('Gagal hapus')
         } catch (err) {
             setFiles(prev)
+            try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(prev)) } catch (e) { }
             alert('Gagal hapus: ' + err.message)
         }
     }
@@ -99,8 +116,11 @@ export default function IGFatkhurrhn() {
         }
 
         const prev = files
-        setFiles(f => f.map(x => x.key === oldKey ? { ...x, key: newKey, url: `/api/image/${newKey}` } : x))
+        const next = files.map(x => x.key === oldKey ? { ...x, key: newKey, url: `/api/image/${newKey}` } : x)
+        setFiles(next)
+        setSelected(s => s && s.key === oldKey ? { ...s, key: newKey, url: `/api/image/${newKey}` } : s)
         setRenameTarget(null)
+        try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(next)) } catch (e) { }
 
         try {
             const res = await fetch(`${API_BASE}/api/rename`, {
@@ -111,6 +131,7 @@ export default function IGFatkhurrhn() {
             if (!res.ok) throw new Error('Gagal rename')
         } catch (err) {
             setFiles(prev)
+            try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(prev)) } catch (e) { }
             alert('Gagal rename: ' + err.message)
         }
     }
@@ -155,7 +176,7 @@ export default function IGFatkhurrhn() {
                         <button
                             onClick={() => fileInputRef.current?.click()}
                             disabled={uploading}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-neutral-900 text-white text-xs disabled:opacity-50 transition"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-neutral-900 text-white text-xs disabled:opacity-50 transition"
                         >
                             {uploading ? (
                                 <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading</>
@@ -167,7 +188,7 @@ export default function IGFatkhurrhn() {
                 </div>
             </header>
 
-            {loading && (
+            {loading && files.length === 0 && (
                 <div className="flex justify-center py-20">
                     <Loader2 className="w-6 h-6 animate-spin text-neutral-400" />
                 </div>
@@ -186,12 +207,12 @@ export default function IGFatkhurrhn() {
                 </div>
             )}
 
-            {!loading && files.length > 0 && (
+            {files.length > 0 && (
                 <div className="grid grid-cols-3 gap-0">
-                    {files.map((file, idx) => (
+                    {files.map(file => (
                         <button
                             key={file.key}
-                            onClick={() => setSelectedIndex(idx)}
+                            onClick={() => setSelected(file)}
                             className="relative aspect-square bg-neutral-100 overflow-hidden active:opacity-80 transition"
                         >
                             <img
@@ -205,13 +226,11 @@ export default function IGFatkhurrhn() {
                 </div>
             )}
 
-            {/* ---------- Viewer (full screen, swipeable) ---------- */}
+            {/* ---------- Popup: Preview Foto ---------- */}
             {selected && !deleteTarget && !renameTarget && (
-                <PostViewer
-                    files={files}
-                    index={selectedIndex}
-                    onIndexChange={setSelectedIndex}
-                    onClose={() => setSelectedIndex(null)}
+                <PostPopup
+                    file={selected}
+                    onClose={() => setSelected(null)}
                     onDelete={() => setDeleteTarget(selected)}
                     onRename={() => openRename(selected)}
                     onShare={() => handleShare(selected)}
@@ -222,7 +241,7 @@ export default function IGFatkhurrhn() {
             {deleteTarget && (
                 <Modal onClose={() => setDeleteTarget(null)}>
                     <div className="flex flex-col items-center text-center">
-                        <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                        <div className="w-12 h-12 bg-red-100 flex items-center justify-center mb-4">
                             <AlertTriangle className="w-6 h-6 text-red-600" />
                         </div>
                         <h2 className="text-lg font-semibold mb-1">Hapus quote ini?</h2>
@@ -232,13 +251,13 @@ export default function IGFatkhurrhn() {
                         <div className="flex gap-2 w-full">
                             <button
                                 onClick={() => setDeleteTarget(null)}
-                                className="flex-1 px-4 py-2 rounded-lg border border-neutral-200 text-sm"
+                                className="flex-1 px-4 py-2 border border-neutral-200 text-sm"
                             >
                                 Batal
                             </button>
                             <button
                                 onClick={confirmDelete}
-                                className="flex-1 px-4 py-2 rounded-lg bg-red-600 text-white text-sm"
+                                className="flex-1 px-4 py-2 bg-red-600 text-white text-sm"
                             >
                                 Hapus
                             </button>
@@ -259,18 +278,18 @@ export default function IGFatkhurrhn() {
                             onChange={e => setRenameValue(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && confirmRename()}
                             autoFocus
-                            className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm font-mono focus:outline-none focus:border-neutral-400 mb-6"
+                            className="w-full px-3 py-2 border border-neutral-200 text-sm font-mono focus:outline-none focus:border-neutral-400 mb-6"
                         />
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setRenameTarget(null)}
-                                className="flex-1 px-4 py-2 rounded-lg border border-neutral-200 text-sm"
+                                className="flex-1 px-4 py-2 border border-neutral-200 text-sm"
                             >
                                 Batal
                             </button>
                             <button
                                 onClick={confirmRename}
-                                className="flex-1 px-4 py-2 rounded-lg bg-neutral-900 text-white text-sm inline-flex items-center justify-center gap-2"
+                                className="flex-1 px-4 py-2 bg-neutral-900 text-white text-sm inline-flex items-center justify-center gap-2"
                             >
                                 <Check className="w-4 h-4" /> Simpan
                             </button>
@@ -282,157 +301,84 @@ export default function IGFatkhurrhn() {
     )
 }
 
-/* ---------- Post Viewer (fullscreen, swipeable) ---------- */
-function PostViewer({ files, index, onIndexChange, onClose, onDelete, onRename, onShare }) {
-    const file = files[index]
-    const touchStart = useRef(null)
-    const touchDelta = useRef(0)
-    const [drag, setDrag] = useState(0)
-
-    // Keyboard nav
+/* ---------- Popup Preview Foto ---------- */
+function PostPopup({ file, onClose, onDelete, onRename, onShare }) {
     useEffect(() => {
-        function onKey(e) {
-            if (e.key === 'Escape') onClose()
-            if (e.key === 'ArrowRight' && index < files.length - 1) onIndexChange(index + 1)
-            if (e.key === 'ArrowLeft' && index > 0) onIndexChange(index - 1)
-        }
+        function onKey(e) { if (e.key === 'Escape') onClose() }
         document.addEventListener('keydown', onKey)
         document.body.style.overflow = 'hidden'
         return () => {
             document.removeEventListener('keydown', onKey)
             document.body.style.overflow = ''
         }
-    }, [index, files.length, onClose, onIndexChange])
-
-    // Reset drag saat pindah foto
-    useEffect(() => {
-        setDrag(0)
-        touchStart.current = null
-        touchDelta.current = 0
-    }, [index])
-
-    function onTouchStart(e) {
-        touchStart.current = e.touches[0].clientX
-    }
-
-    function onTouchMove(e) {
-        if (touchStart.current === null) return
-        const delta = e.touches[0].clientX - touchStart.current
-        if ((index === 0 && delta > 0) || (index === files.length - 1 && delta < 0)) {
-            touchDelta.current = delta * 0.3
-        } else {
-            touchDelta.current = delta
-        }
-        setDrag(touchDelta.current)
-    }
-
-    function onTouchEnd() {
-        const threshold = 60
-        if (touchDelta.current < -threshold && index < files.length - 1) {
-            onIndexChange(index + 1)
-        } else if (touchDelta.current > threshold && index > 0) {
-            onIndexChange(index - 1)
-        }
-        setDrag(0)
-        touchStart.current = null
-        touchDelta.current = 0
-    }
+    }, [onClose])
 
     return (
-        <div className="fixed inset-0 z-40 bg-white flex flex-col">
-            {/* Top bar */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
+        <div
+            className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
+            onClick={onClose}
+        >
+            <div
+                className="relative w-full max-w-sm bg-white overflow-hidden shadow-xl"
+                onClick={e => e.stopPropagation()}
+            >
+                {/* Close */}
                 <button
                     onClick={onClose}
-                    className="p-2 -ml-2 rounded-full active:bg-neutral-100 transition"
+                    className="absolute top-3 right-3 z-10 p-1.5 bg-white/90 backdrop-blur text-neutral-700 active:bg-neutral-100 transition"
                 >
-                    <ArrowLeft className="w-5 h-5" />
+                    <X className="w-4 h-4" />
                 </button>
-                <span className="text-xs text-neutral-500 font-mono truncate max-w-[60%]">
-                    {file.key}
-                </span>
-                <span className="text-xs text-neutral-400">
-                    {index + 1} / {files.length}
-                </span>
-            </div>
 
-            {/* Image area — swipeable */}
-            <div
-                className="flex-1 bg-neutral-950 relative overflow-hidden select-none"
-                onTouchStart={onTouchStart}
-                onTouchMove={onTouchMove}
-                onTouchEnd={onTouchEnd}
-            >
-                <div
-                    className="absolute inset-0 flex items-center justify-center will-change-transform"
-                    style={{
-                        transform: `translateX(${drag}px)`,
-                        transition: touchStart.current === null ? 'transform 0.25s ease-out' : 'none',
-                    }}
-                >
+                {/* Image */}
+                <div className="aspect-square bg-neutral-100">
                     <img
                         src={`${API_BASE}${file.url}`}
                         alt={file.key}
-                        draggable={false}
-                        className="max-w-full max-h-full object-contain pointer-events-none"
+                        className="w-full h-full object-cover"
                     />
                 </div>
 
-                {/* Hint panah (desktop doang) */}
-                <div className="hidden md:flex absolute inset-y-0 left-0 items-center pl-3 pointer-events-none">
-                    {index > 0 && (
-                        <div className="w-8 h-8 rounded-full bg-white/10 backdrop-blur flex items-center justify-center text-white text-xs">
-                            ‹
-                        </div>
-                    )}
-                </div>
-                <div className="hidden md:flex absolute inset-y-0 right-0 items-center pr-3 pointer-events-none">
-                    {index < files.length - 1 && (
-                        <div className="w-8 h-8 rounded-full bg-white/10 backdrop-blur flex items-center justify-center text-white text-xs">
-                            ›
-                        </div>
-                    )}
-                </div>
-            </div>
+                {/* Info */}
+                {/* <div className="px-4 pt-3 pb-2 flex items-center justify-between">
+                    <span className="text-xs text-neutral-500 font-mono truncate">{file.key}</span>
+                    <span className="text-xs text-neutral-400">
+                        {(file.size / 1024).toFixed(0)} KB
+                    </span>
+                </div> */}
 
-            {/* Action bar */}
-            <div className="border-t border-neutral-100 px-4 py-4 grid grid-cols-3 gap-3 bg-white">
-                <ActionButton
-                    icon={<Share2 className="w-5 h-5" />}
-                    label="Bagikan"
-                    onClick={onShare}
-                />
-                <ActionButton
-                    icon={<Pencil className="w-5 h-5" />}
-                    label="Ubah"
-                    onClick={onRename}
-                />
-                <ActionButton
-                    icon={<Trash2 className="w-5 h-5" />}
-                    label="Hapus"
-                    onClick={onDelete}
-                    variant="danger"
-                />
+                {/* Action bar — icon only, tipis */}
+                <div className="flex border-t border-neutral-100">
+                    <button
+                        onClick={onShare}
+                        className="flex-1 flex items-center justify-center py-3 text-neutral-700 active:bg-neutral-50 transition"
+                        title="Bagikan"
+                    >
+                        <Share2 className="w-4 h-4" />
+                    </button>
+                    <div className="w-px bg-neutral-100" />
+                    <button
+                        onClick={onRename}
+                        className="flex-1 flex items-center justify-center py-3 text-neutral-700 active:bg-neutral-50 transition"
+                        title="Ubah"
+                    >
+                        <Pencil className="w-4 h-4" />
+                    </button>
+                    <div className="w-px bg-neutral-100" />
+                    <button
+                        onClick={onDelete}
+                        className="flex-1 flex items-center justify-center py-3 text-red-600 active:bg-red-50 transition"
+                        title="Hapus"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </button>
+                </div>
             </div>
         </div>
     )
 }
 
-function ActionButton({ icon, label, onClick, variant }) {
-    const base = "flex flex-col items-center justify-center gap-1 py-3 rounded-xl border text-xs transition active:scale-95"
-    const styles = variant === 'danger'
-        ? "border-red-100 text-red-600 bg-red-50"
-        : "border-neutral-200 text-neutral-700 bg-white"
-
-    return (
-        <button onClick={onClick} className={`${base} ${styles}`}>
-            {icon}
-            <span>{label}</span>
-        </button>
-    )
-}
-
-/* ---------- Reusable Modal (center) ---------- */
+/* ---------- Reusable Modal (center, tanpa rounded) ---------- */
 function Modal({ children, onClose }) {
     useEffect(() => {
         function onKey(e) { if (e.key === 'Escape') onClose() }
@@ -450,12 +396,12 @@ function Modal({ children, onClose }) {
             onClick={onClose}
         >
             <div
-                className="relative w-full max-w-sm bg-white rounded-2xl shadow-xl p-6"
+                className="relative w-full max-w-sm bg-white shadow-xl p-6"
                 onClick={e => e.stopPropagation()}
             >
                 <button
                     onClick={onClose}
-                    className="absolute top-3 right-3 p-1.5 rounded-full text-neutral-400 active:bg-neutral-100 transition"
+                    className="absolute top-3 right-3 p-1.5 text-neutral-400 active:bg-neutral-100 transition"
                 >
                     <X className="w-4 h-4" />
                 </button>
