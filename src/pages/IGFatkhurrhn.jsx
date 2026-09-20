@@ -139,15 +139,42 @@ export default function IGFatkhurrhn() {
     // ---------- Share ----------
     async function handleShare(file) {
         const url = `${API_BASE}${file.url}`
+
         try {
-            if (navigator.share) {
-                await navigator.share({ title: 'Quote', text: 'Check this quote!', url })
+            // Fetch gambar sebagai blob
+            const res = await fetch(url)
+            if (!res.ok) throw new Error('Gagal ambil gambar')
+            const blob = await res.blob()
+
+            // Kasih nama file yang bener
+            const fileName = file.key.includes('.') ? file.key : `${file.key}.png`
+            const shareFile = new File([blob], fileName, {
+                type: blob.type || 'image/png',
+            })
+
+            // Cek dukungan share files
+            if (navigator.canShare && navigator.canShare({ files: [shareFile] })) {
+                await navigator.share({
+                    files: [shareFile],
+                    title: 'Quote',
+                })
             } else {
-                await navigator.clipboard.writeText(url)
-                alert('Link disalin!')
+                // Fallback: kalo browser ga support share files
+                // Simpen ke memori + trigger download biasa
+                const downloadUrl = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = downloadUrl
+                a.download = fileName
+                document.body.appendChild(a)
+                a.click()
+                document.body.removeChild(a)
+                URL.revokeObjectURL(downloadUrl)
             }
         } catch (err) {
-            if (err.name !== 'AbortError') console.error(err)
+            if (err.name !== 'AbortError') {
+                console.error('Share gagal:', err)
+                alert('Gagal bagikan: ' + err.message)
+            }
         }
     }
 
