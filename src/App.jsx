@@ -13,7 +13,7 @@ import BahanReels from './pages/BahanReels';
 import InstagramKu from './pages/InstagramKu';
 import AllQuotes from './pages/AllQuotesKu';
 import Testing from './pages/Testing';
-import MusicLibrary from './pages/MusicLibrary';
+import IGFatkhurrhn from './pages/IGFatkhurrhn';
 
 function App() {
   return (
@@ -30,7 +30,7 @@ function App() {
         <Route path="/instagramku" element={<InstagramKu />} />
         <Route path="/search" element={<Search />} />
         <Route path="/bahan-reels" element={<BahanReels />} />
-        <Route path="/music" element={<MusicLibrary />} />
+        <Route path="/fatkhurrhn" element={<IGFatkhurrhn />} />
 
         
         <Route path="/quotes-vid" element={<QuotesVid />} />
